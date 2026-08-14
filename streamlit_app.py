@@ -100,12 +100,8 @@ LOGO=('<svg viewBox="0 0 250 60" width="180" xmlns="http://www.w3.org/2000/svg" 
       '<text x="80" y="49" font-size="12.5" font-weight="800" fill="#d98a1f" letter-spacing="4">LAB</text></svg>')
 
 # ---------- senha ----------
-def _sec(k):
-    try: return st.secrets.get(k)
-    except Exception: return None
-
 def _gate():
-    pw=_sec("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
+    pw=st.secrets.get("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
     if not pw: return True
     if st.session_state.get("auth_ok"): return True
     st.markdown(f'<div class="logo" style="margin:8vh auto 20px;width:180px">{LOGO}</div>', unsafe_allow_html=True)
@@ -113,7 +109,10 @@ def _gate():
     with c:
         p=st.text_input("Senha", type="password", label_visibility="collapsed", placeholder="Senha do painel")
         if st.button("Entrar", type="primary", use_container_width=True):
-            if p==pw: st.session_state["auth_ok"]=True; st.rerun()
+            if p==pw:
+                st.session_state["auth_ok"]=True
+                st.query_params["k"]=_tok(pw)
+                st.rerun()
             else: st.error("Senha incorreta.")
     return False
 if not _gate(): st.stop()
@@ -122,11 +121,7 @@ if not _gate(): st.stop()
 @st.cache_resource
 def _conn():
     import psycopg2
-    url=_sec("DB_URL") or os.environ.get("DB_URL")
-    if not url:
-        st.error("⚙️ Falta configurar os Secrets do app: em share.streamlit.io, abra o app → "
-                 "⋮ → Settings → Secrets e cole DB_URL e APP_PASSWORD. Salve — o app reinicia sozinho.")
-        st.stop()
+    url=st.secrets.get("DB_URL") or os.environ.get("DB_URL")
     return psycopg2.connect(url)
 
 @st.cache_data(ttl=300, show_spinner=False)
