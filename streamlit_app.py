@@ -100,10 +100,24 @@ LOGO=('<svg viewBox="0 0 250 60" width="180" xmlns="http://www.w3.org/2000/svg" 
       '<text x="80" y="49" font-size="12.5" font-weight="800" fill="#d98a1f" letter-spacing="4">LAB</text></svg>')
 
 # ---------- senha ----------
+def _sec(k):
+    try: return st.secrets.get(k)
+    except Exception: return None
+
+def _tok(pw):
+    import hashlib
+    return hashlib.sha256(("aslab|"+pw).encode()).hexdigest()[:20]
+
 def _gate():
-    pw=st.secrets.get("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
+    pw=_sec("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
     if not pw: return True
-    if st.session_state.get("auth_ok"): return True
+    tok=_tok(pw)
+    if st.query_params.get("k")==tok:
+        st.session_state["auth_ok"]=True
+        return True
+    if st.session_state.get("auth_ok"):
+        st.query_params["k"]=tok
+        return True
     st.markdown(f'<div class="logo" style="margin:8vh auto 20px;width:180px">{LOGO}</div>', unsafe_allow_html=True)
     c=st.columns([1,1.2,1])[1]
     with c:
@@ -121,7 +135,10 @@ if not _gate(): st.stop()
 @st.cache_resource
 def _conn():
     import psycopg2
-    url=st.secrets.get("DB_URL") or os.environ.get("DB_URL")
+    url=_sec("DB_URL") or os.environ.get("DB_URL")
+    if not url:
+        st.error("⚙️ Falta configurar os Secrets do app (DB_URL e APP_PASSWORD) em share.streamlit.io → Settings → Secrets.")
+        st.stop()
     return psycopg2.connect(url)
 
 @st.cache_data(ttl=300, show_spinner=False)
