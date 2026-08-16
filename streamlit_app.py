@@ -256,6 +256,63 @@ elif page.startswith("🧑"):
                     tooltip=["Mês", alt.Tooltip("km:Q", format=".0f")])
             .properties(height=200, background="rgba(0,0,0,0)").configure_view(strokeWidth=0))
         st.altair_chart(ch, use_container_width=True)
+    # recuperação · tendências (VFC / sono / FC repouso)
+    _win=st.radio("Janela", [30,60,90], index=1, horizontal=True, format_func=lambda x:f"{x} dias",
+                  key="rec_win", label_visibility="collapsed")
+    ms=q("""SELECT date, hrv, sono_h, fc_rep FROM metricas_diarias
+            WHERE atleta_id=%s AND date>=%s ORDER BY date""",
+         (aid,(hoje-dt.timedelta(days=_win)).isoformat()))
+    if len(ms) and (ms["hrv"].notna().sum() or ms["sono_h"].notna().sum()):
+        sect("🫀 Recuperação · tendências")
+        ms["date"]=pd.to_datetime(ms["date"])
+        for c in ("hrv","sono_h","fc_rep"):
+            ms[c+"_m7"]=ms[c].rolling(7, min_periods=3).mean()
+        def _trend(df, col, cor, ref=None, banda=None, fmt=".0f", h=210):
+            d=df.dropna(subset=[col])
+            if d.empty: return None
+            xax=alt.X("date:T", title=None, axis=alt.Axis(format="%d/%m", labelColor=P["ax"], grid=False,
+                      tickColor=P["line"], domainColor=P["line"], labelAngle=0, labelFontSize=10))
+            yax=alt.Y(f"{col}:Q", title=None, scale=alt.Scale(zero=False), axis=_ay())
+            base=alt.Chart(d).encode(x=xax); layers=[]
+            if banda:
+                layers.append(alt.Chart(pd.DataFrame({"lo":[banda[0]],"hi":[banda[1]]}))
+                              .mark_rect(color=cor, opacity=0.08).encode(y="lo:Q", y2="hi:Q"))
+            layers.append(base.mark_circle(size=32, color=cor, opacity=0.45).encode(
+                y=yax, tooltip=[alt.Tooltip("date:T",title="Dia",format="%d/%m"),
+                                alt.Tooltip(f"{col}:Q",format=fmt)]))
+            layers.append(base.mark_line(color=cor, strokeWidth=2.6).encode(
+                y=alt.Y(f"{col}_m7:Q", scale=alt.Scale(zero=False))))
+            if ref is not None:
+                layers.append(alt.Chart(pd.DataFrame({"y":[ref]})).mark_rule(
+                    color=P["mut"], strokeDash=[4,4], strokeWidth=1.2).encode(y="y:Q"))
+            return alt.layer(*layers).properties(height=h, background="rgba(0,0,0,0)").configure_view(strokeWidth=0)
+        _hrv=ms["hrv"].dropna(); _sono=ms["sono_h"].dropna()
+        _hrv7=ms["hrv_m7"].dropna(); _sono7=ms["sono_h_m7"].dropna()
+        kk=st.columns(4)
+        if len(_hrv):
+            _hb=_hrv.mean(); _hn=_hrv7.iloc[-1] if len(_hrv7) else _hrv.iloc[-1]
+            kk[0].metric("VFC · média 7d", f"{_hn:.0f} ms", f"{(_hn-_hb):+.0f} vs sua média ({_hb:.0f})")
+            kk[1].metric("VFC · dias", f"{len(_hrv)}")
+        if len(_sono):
+            _sb=_sono.mean(); _sn=_sono7.iloc[-1] if len(_sono7) else _sono.iloc[-1]
+            kk[2].metric("Sono · média 7d", f"{_sn:.1f} h", f"{(_sn-_sb):+.1f} vs sua média ({_sb:.1f})")
+            kk[3].metric("Noites < 7h", f"{int((_sono<7).sum())} de {len(_sono)}")
+        g=st.columns(2)
+        with g[0]:
+            st.caption("**VFC (HRV)** — pontos = dia · linha = média 7d · tracejado = sua média · faixa = zona normal")
+            if len(_hrv):
+                _sd=_hrv.std() if len(_hrv)>3 else 0
+                ch=_trend(ms,"hrv","#37b87f", ref=_hrv.mean(), banda=(_hrv.mean()-_sd,_hrv.mean()+_sd))
+                if ch is not None: st.altair_chart(ch, use_container_width=True)
+        with g[1]:
+            st.caption("**Sono** — pontos = noite · linha = média 7d · tracejado = 7h")
+            if len(_sono):
+                ch=_trend(ms,"sono_h","#3f8ea0", ref=7.0, fmt=".1f")
+                if ch is not None: st.altair_chart(ch, use_container_width=True)
+        if ms["fc_rep"].notna().sum()>=3:
+            st.caption("**FC de repouso** — subir junto com VFC caindo = sinal de fadiga/estresse")
+            ch=_trend(ms,"fc_rep","#ee6c4d", ref=ms["fc_rep"].mean(), h=160)
+            if ch is not None: st.altair_chart(ch, use_container_width=True)
     # treinos do mês
     tt=q("""SELECT date "Data", title "Treino", kind, dist_km, dur_h, hr, cad, tss
             FROM treinos WHERE atleta_id=%s AND mes=%s AND type='completed'
