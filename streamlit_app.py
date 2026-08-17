@@ -163,7 +163,7 @@ def _ay():
 # ---------- header ----------
 hd=st.columns([1.5,4.5], vertical_alignment="center")
 hd[0].markdown(f'<div class="logo">{LOGO}</div>', unsafe_allow_html=True)
-page=hd[1].radio("Seção", ["👥 Equipe","🧑‍💼 Atleta","🧭 Periodização","🎯 Provas","🚨 Perdidos"],
+page=hd[1].radio("Seção", ["👥 Equipe","🧑‍💼 Atleta","🏆 Liga","🧭 Periodização","🎯 Provas","🚨 Perdidos"],
                  horizontal=True, label_visibility="collapsed")
 
 try:
@@ -191,6 +191,167 @@ mlabel=lambda m: f'{MESES[int(m[5:7])-1].capitalize()} {m[:4]}'
 mes=st.selectbox("Mês", meses, format_func=mlabel)
 
 # ---------- páginas ----------
+
+# ---------- Liga AS (mesma fórmula do painel local, sobre Postgres) ----------
+PESOS={"disciplina":.35,"constancia":.25,"evolucao":.25,"ritmo":.15}
+PESOS_CORRIDA={"disciplina":.30,"constancia":.25,"evolucao":.20,"volume":.25}
+PESOS_FORCA={"disciplina":.50,"constancia":.50}
+
+def _clamp(v, lo=0.0, hi=100.0): return max(lo, min(hi, v))
+
+@st.cache_data(ttl=600, show_spinner=False)
+def liga_cloud(ini_iso, fim_iso, modo, mensal, prev_ini, prev_fim):
+    """Ranking do período. mensal=True usa semanas como referência; False = semana única."""
+    tr=q("""SELECT t.atleta_id, a.nome, t.date, t.type, t.kind, t.dist_km, t.dur_h, t.was_planned
+            FROM treinos t JOIN atletas a ON a.id=t.atleta_id AND a.ativo=1
+            WHERE t.date>=%s AND t.date<=%s""",(ini_iso, fim_iso))
+    if not len(tr): return []
+    pv=q("""SELECT atleta_id, SUM(dist_km) km, SUM(dur_h) h FROM treinos
+            WHERE date>=%s AND date<%s AND type='completed' AND kind='run'
+              AND dist_km>=3 AND dur_h>0 GROUP BY atleta_id""",(prev_ini, prev_fim))
+    prev={r["atleta_id"]:(r["km"], r["h"]) for _,r in pv.iterrows()} if len(pv) else {}
+    ini=dt.date.fromisoformat(ini_iso); fim=dt.date.fromisoformat(fim_iso)
+    n_sem=len({(ini+dt.timedelta(days=i)-dt.timedelta(days=(ini+dt.timedelta(days=i)).weekday())).isoformat()
+               for i in range((fim-ini).days+1)}) if mensal else None
+    alvo={"corrida":"run","forca":"strength"}.get(modo)
+    min_sess=(6 if modo=="geral" else 4) if mensal else (3 if modo=="geral" else 2)
+    min_plan=4 if (mensal and modo=="geral") else 2
+    rows=[]
+    for aid, g in tr.groupby("atleta_id"):
+        nome=g["nome"].iloc[0]
+        comp=g[(g["type"]=="completed") & ((g["kind"]==alvo) if alvo else True)]
+        if not len(comp): continue
+        plan=g[(g["type"]=="planned") & ((g["kind"]==alvo) if alvo else True)]
+        done_pl=int(comp["was_planned"].fillna(0).sum())
+        tot_plan=len(plan)+done_pl
+        disciplina=(done_pl/tot_plan*100) if tot_plan>=min_plan else None
+        dts=[dt.date.fromisoformat(str(x)[:10]) for x in comp["date"]]
+        if mensal:
+            por={}
+            for d0 in dts:
+                k=(d0-dt.timedelta(days=d0.weekday())).isoformat(); por[k]=por.get(k,0)+1
+            mn=2 if modo=="forca" else 3
+            constancia=sum(1 for v in por.values() if v>=mn)/n_sem*100
+            grupos=len(por)
+        else:
+            dias=len(set(dts)); alvo_d=3 if modo=="forca" else 5
+            constancia=_clamp(dias/alvo_d*100); grupos=dias
+        runs=comp[comp["kind"]=="run"]
+        km_run=float(runs["dist_km"].fillna(0).sum())
+        val=runs[(runs["dist_km"]>=3) & (runs["dur_h"]>0)]
+        pace=(float(val["dur_h"].sum())*60/float(val["dist_km"].sum())) if len(val) and val["dist_km"].sum()>0 else None
+        evol=None
+        if pace and aid in prev:
+            pk, ph = prev[aid]
+            if pk and pk>(20 if mensal else 10) and ph:
+                pp=float(ph)*60/float(pk)
+                evol=_clamp(50+(pp-pace)/pp*100*25)
+        rows.append({"id":aid,"name":nome,"sess":len(comp),"km":round(km_run),
+                     "km_sem":round(km_run/n_sem,1) if mensal else round(km_run,1),
+                     "pace":pace,"disciplina":disciplina,"constancia":constancia,
+                     "evolucao":evol,"ritmo":None,"volume":None,
+                     "qualificado":len(comp)>=min_sess and (grupos>=2 if mensal else True)})
+    pesos={"forca":PESOS_FORCA,"corrida":PESOS_CORRIDA}.get(modo, PESOS)
+    if modo=="corrida":
+        cv=sorted([r for r in rows if (r["km_sem"] or 0)>0], key=lambda r:-r["km_sem"])
+        for i,r in enumerate(cv): r["volume"]=_clamp((1-i/max(len(cv)-1,1))*100)
+    elif modo!="forca":
+        cp=sorted([r for r in rows if r["pace"]], key=lambda r:r["pace"])
+        for i,r in enumerate(cp): r["ritmo"]=_clamp((1-i/max(len(cp)-1,1))*100)
+    for r in rows:
+        num=den=0.0
+        for k,w in pesos.items():
+            if r.get(k) is not None: num+=r[k]*w; den+=w
+        r["total"]=round(num/den,1) if den else 0.0
+    rows.sort(key=lambda r:(-int(r["qualificado"]), -r["total"], -r["sess"], r["name"].lower()))
+    return rows
+
+def page_liga_cloud(mes):
+    hero("Liga AS", "Competição de comprometimento — disciplina vale mais que velocidade", "🏆 Ranking")
+    c0=st.columns([1.6,2.2,2.2])
+    per=c0[0].radio("Período",["🗓️ Semanal","📆 Mensal"],horizontal=True,label_visibility="collapsed",key="lg_per")
+    mod=c0[2].radio("Modalidade",["🏅 Geral","🏃 Corrida","🏋️ Força"],horizontal=True,
+                    label_visibility="collapsed",key="lg_mod")
+    modo={"🏅 Geral":"geral","🏃 Corrida":"corrida","🏋️ Força":"forca"}[mod]
+    mon=hoje-dt.timedelta(days=hoje.weekday())
+    if per.startswith("🗓️"):
+        wops=[mon-dt.timedelta(days=7*i) for i in range(8)]
+        wl=lambda w:f'{w.strftime("%d/%m")} – {(w+dt.timedelta(days=6)).strftime("%d/%m")}'+(" · atual" if w==mon else "")
+        wk=c0[1].selectbox("Semana",wops,format_func=wl,key="lg_wk",label_visibility="collapsed")
+        ini=wk; fim=min(wk+dt.timedelta(days=6),hoje); mensal=False
+        prev=((ini-dt.timedelta(days=28)).isoformat(), ini.isoformat())
+        rot=f"Semana {wl(wk)}"; cnome="📅 Presença"
+    else:
+        y,m=map(int,mes.split("-"))
+        import calendar as _cal
+        ini=dt.date(y,m,1); fim=min(dt.date(y,m,_cal.monthrange(y,m)[1]),hoje); mensal=True
+        p0=(ini-dt.timedelta(days=62)).replace(day=1)
+        prev=(p0.isoformat(), ini.isoformat())
+        rot=mlabel(mes); cnome="📅 Constância"
+    if fim<ini: st.info("Período ainda não começou."); return
+    rows=liga_cloud(ini.isoformat(), fim.isoformat(), modo, mensal, prev[0], prev[1])
+    if not rows: st.info("Sem treinos neste período ainda."); return
+    qf=[r for r in rows if r["qualificado"]]; nq=[r for r in rows if not r["qualificado"]]
+    if len(qf)>=3:
+        med=["🥇","🥈","🥉"]; pc=st.columns(3)
+        for pos,col in zip([0,1,2],[pc[1],pc[0],pc[2]]):
+            r=qf[pos]
+            extra=(f'{r["km_sem"]} km/sem' if modo=="corrida" else f'{r["km"]} km')
+            col.markdown(f'''<div style="text-align:center;padding:{"24px" if pos==0 else "16px"} 10px;
+              background:{P["metric"]};border:1px solid {"rgba(242,165,65,.5)" if pos==0 else P["gbrd"]};
+              border-radius:18px;{"box-shadow:0 0 22px rgba(242,165,65,.15);" if pos==0 else ""}">
+              <div style="font-size:{"2.2rem" if pos==0 else "1.6rem"}">{med[pos]}</div>
+              <div style="font-weight:800;font-size:{"1.05rem" if pos==0 else ".95rem"}">{r["name"]}</div>
+              <div style="font-size:{"1.9rem" if pos==0 else "1.4rem"};font-weight:800;color:#f2a541">{r["total"]:.1f}</div>
+              <div style="font-size:.66rem;color:{P["mut"]};text-transform:uppercase">{r["sess"]} treinos · {extra}</div>
+              </div>''', unsafe_allow_html=True)
+    def _lead(k,emoji,nome_p):
+        cand=[r for r in qf if r.get(k) is not None]
+        if not cand: return f"{emoji} {nome_p}: –"
+        b=max(cand,key=lambda r:r[k])
+        return f'{emoji} **{nome_p}**: {b["name"].split()[0]} ({b[k]:.0f})'
+    leads=[_lead("disciplina","🎯","Disciplina"), _lead("constancia","",cnome)]
+    if modo=="corrida": leads+=[_lead("evolucao","📈","Evolução"), _lead("volume","📏","Volume")]
+    elif modo!="forca": leads+=[_lead("evolucao","📈","Evolução"), _lead("ritmo","⚡","Ritmo")]
+    st.markdown(" &nbsp;·&nbsp; ".join(leads))
+    st.divider()
+    sect(f"Classificação · {rot} · {len(qf)} qualificados")
+    _f=lambda v: f"{v:.0f}" if v is not None else "–"
+    def _pace(v):
+        if not v: return "–"
+        mi=int(v); se=int(round((v-mi)*60))
+        if se==60: mi+=1; se=0
+        return f"{mi}:{se:02d}"
+    if modo=="forca":
+        df=pd.DataFrame([{"#":i+1,"Atleta":r["name"],"Total":f'{r["total"]:.1f}',
+            "🎯 Disc.":_f(r["disciplina"]),cnome:_f(r["constancia"]),"Sessões":r["sess"]} for i,r in enumerate(qf)])
+        html_table(df, num={"#","Total","🎯 Disc.",cnome,"Sessões"})
+    elif modo=="corrida":
+        kl="Km/sem" if mensal else "Km"
+        df=pd.DataFrame([{"#":i+1,"Atleta":r["name"],"Total":f'{r["total"]:.1f}',
+            "🎯 Disc.":_f(r["disciplina"]),cnome:_f(r["constancia"]),"📈 Evol.":_f(r["evolucao"]),
+            "📏 Volume":_f(r["volume"]),kl:f'{r["km_sem"]:.1f}',"Treinos":r["sess"],
+            "Pace":_pace(r["pace"])} for i,r in enumerate(qf)])
+        html_table(df, num={"#","Total","🎯 Disc.",cnome,"📈 Evol.","📏 Volume",kl,"Treinos","Pace"})
+    else:
+        df=pd.DataFrame([{"#":i+1,"Atleta":r["name"],"Total":f'{r["total"]:.1f}',
+            "🎯 Disc.":_f(r["disciplina"]),cnome:_f(r["constancia"]),"📈 Evol.":_f(r["evolucao"]),
+            "⚡ Ritmo":_f(r["ritmo"]),"Treinos":r["sess"],"Km":r["km"],
+            "Pace":_pace(r["pace"])} for i,r in enumerate(qf)])
+        html_table(df, num={"#","Total","🎯 Disc.",cnome,"📈 Evol.","⚡ Ritmo","Treinos","Km","Pace"})
+    if nq:
+        with st.expander(f"Ainda não qualificados ({len(nq)})"):
+            html_table(pd.DataFrame([{"Atleta":r["name"],"Treinos":r["sess"],"Km":r["km"],
+                                      "Total parcial":f'{r["total"]:.1f}'} for r in nq]),
+                       num={"Treinos","Km","Total parcial"})
+    if modo=="corrida":
+        st.caption("**Corrida:** Disciplina 30% · "+cnome.replace("📅 ","")+" 25% · Evolução 20% · **Volume 25% "
+                   "(percentil de km por semana)**.")
+    elif modo=="forca":
+        st.caption("**Força:** Disciplina 50% · "+cnome.replace("📅 ","")+" 50%.")
+    else:
+        st.caption("**Geral:** Disciplina 35% · "+cnome.replace("📅 ","")+" 25% · Evolução 25% · Ritmo 15%.")
+
 if page.startswith("👥"):
     hero("Visão da Equipe", f"{mlabel(mes)} · dados da última sincronização", "Equipe")
     df=q("""SELECT a.nome "Atleta",
@@ -328,6 +489,9 @@ elif page.startswith("🧑"):
         tt["TSS"]=tt["tss"].map(lambda v: f"{v:.0f}" if v else "–")
         html_table(tt[["Data","Treino","Tipo","Dist.","Pace","Cad.","FC","TSS"]],
                    num={"Dist.","Pace","Cad.","FC","TSS"})
+
+elif page.startswith("🏆"):
+    page_liga_cloud(mes)
 
 elif page.startswith("🧭"):
     hero("Periodização", "Planejado × realizado — edição no painel do Mac", "ATP do Lab")
