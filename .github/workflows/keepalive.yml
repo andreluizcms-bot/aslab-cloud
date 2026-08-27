@@ -1,0 +1,15 @@
+# Mantém o app do Streamlit Cloud acordado (o plano grátis hiberna sem tráfego).
+# Roda no GitHub, então funciona mesmo com o Mac desligado.
+name: keepalive
+on:
+  schedule:
+    - cron: "*/40 * * * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: acorda o app
+        run: |
+          curl -s -o /dev/null -m 60 -w "HTTP %{http_code} em %{time_total}s\n" \
+            "https://appapppy-ivviqwx6qqis929mb4ljha.streamlit.app" || true
