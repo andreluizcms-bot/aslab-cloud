@@ -14,16 +14,18 @@ st.set_page_config(page_title="AS Endurance LAB", page_icon="🏃", layout="wide
 
 # ---------- tema: painel esportivo (preto de prova, cor por domínio) ----------
 # laranja = carga/km · verde = recuperação · azul = sono/base · vermelho = falta
-COR=dict(carga="#FF6B35", recup="#2EE6A8", sono="#6C9EFF", alerta="#FF4D5E", ouro="#F2A541")
+COR=dict(carga="#ee6c4d", recup="#37b87f", sono="#3f8ea0", alerta="#cf4a5a", ouro="#f2a541")
 DARK=dict(
-  bg="#0B0D10",
-  text="#F2F5F7", mut="#78848F", line="#1E242C",
-  hero="#101318",
-  metric="#14181E",
-  card="#14181E",
-  gbrd="#232A33", hovbg="#191F27",
-  inbg="#14181E", th="#10141A", talt="rgba(255,255,255,.022)",
-  chiptx="#F2A541", ax="#78848F", grid="#171D24", val="#C9D2D9", shc="0,0,0")
+  bg=("radial-gradient(1000px 620px at 88% -12%, rgba(238,108,77,.10), transparent 62%),"
+      "radial-gradient(900px 560px at -6% 108%, rgba(63,142,160,.13), transparent 60%),"
+      "linear-gradient(180deg,#0a2026,#07171d)"),
+  text="#eaf3f4", mut="#8fa6ad", line="#163a44",
+  hero="#0c262e",
+  metric="#0d2931",
+  card="#0c262e",
+  gbrd="#1c4450", hovbg="rgba(255,255,255,.05)",
+  inbg="#0e2c34", th="#0b242c", talt="rgba(255,255,255,.025)",
+  chiptx="#f2a541", ax="#8fa6ad", grid="#11333c", val="#c9d6d9", shc="4,19,26")
 P=DARK
 _CSS=string.Template("""
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700&family=Inter:wght@400;600;800&display=swap');
@@ -43,7 +45,7 @@ h1,h2,h3{color:$text;font-family:"Barlow Condensed",Inter,sans-serif}
 [data-baseweb="popover"] li,[data-baseweb="popover"] li *{background:transparent!important;color:$text!important}
 .stTextInput input{background:$inbg!important;color:$text!important;border-color:$gbrd!important;border-radius:10px!important}
 .hero{background:$hero;border:1px solid $gbrd;border-radius:16px;padding:14px 20px 12px;margin:0 0 14px}
-.hero .kick{display:inline-block;color:#FF6B35;font-weight:800;letter-spacing:.18em;font-size:.62rem;
+.hero .kick{display:inline-block;color:#ee6c4d;font-weight:800;letter-spacing:.18em;font-size:.62rem;
   text-transform:uppercase;margin-bottom:2px}
 .hero h1{margin:0;font-size:2.3rem;line-height:1;letter-spacing:.02em;text-transform:uppercase;
   font-family:"Barlow Condensed",sans-serif;font-weight:700;font-style:italic}
@@ -51,7 +53,7 @@ h1,h2,h3{color:$text;font-family:"Barlow Condensed",Inter,sans-serif}
 [data-testid="stMetric"]{background:$metric;border:1px solid $gbrd;border-radius:14px;
   padding:12px 15px 9px;position:relative;overflow:hidden}
 [data-testid="stMetric"]:before{content:"";position:absolute;left:0;bottom:0;height:3px;width:100%;
-  background:#FF6B35}
+  background:linear-gradient(90deg,#ee6c4d,#f2a541)}
 [data-testid="stMetricLabel"] p{color:$mut!important;font-size:.6rem;font-weight:700;
   text-transform:uppercase;letter-spacing:.1em}
 [data-testid="stMetricValue"]{font-family:"Barlow Condensed",sans-serif;font-weight:700;
@@ -60,11 +62,11 @@ h1,h2,h3{color:$text;font-family:"Barlow Condensed",Inter,sans-serif}
 [role="radiogroup"] label{padding:7px 13px;border-radius:999px;border:1px solid $gbrd;background:$card}
 [role="radiogroup"] label>div:first-child{display:none}
 [role="radiogroup"] label p{font-weight:600;font-size:.86rem}
-[role="radiogroup"] label:has(input:checked){background:#FF6B35;border-color:#FF6B35}
-[role="radiogroup"] label:has(input:checked) p{color:#0B0D10!important;font-weight:800}
+[role="radiogroup"] label:has(input:checked){background:#ee6c4d;border-color:#ee6c4d}
+[role="radiogroup"] label:has(input:checked) p{color:#ffffff!important;font-weight:800}
 .sect{font-weight:800;font-size:.82rem;margin:.6rem 0 .5rem;display:flex;align-items:center;gap:8px;
   text-transform:uppercase;letter-spacing:.12em;color:$mut}
-.sect:before{content:"";width:14px;height:3px;background:#FF6B35}
+.sect:before{content:"";width:14px;height:3px;background:linear-gradient(90deg,#ee6c4d,#f2a541)}
 .tblwrap{max-height:460px;overflow:auto;border:1px solid $gbrd;border-radius:12px;background:$card}
 table.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:.84rem}
 table.tbl th{position:sticky;top:0;background:$th;color:$mut;text-align:left;padding:9px 11px;font-weight:700;
@@ -120,7 +122,7 @@ def html_table(df, num=()):
 LOGO=('<svg viewBox="0 0 250 60" width="180" xmlns="http://www.w3.org/2000/svg" '
       'font-family="Avenir Next,Helvetica,Arial,sans-serif">'
       '<text x="0" y="45" font-size="39" font-weight="800" fill="#eaf3f4" letter-spacing="-2">AS</text>'
-      '<rect x="64" y="12" width="3.4" height="39" rx="1.7" fill="#FF6B35"/>'
+      '<rect x="64" y="12" width="3.4" height="39" rx="1.7" fill="#ee6c4d"/>'
       '<text x="80" y="31" font-size="12.5" font-weight="700" fill="#eaf3f4" letter-spacing="4">ENDURANCE</text>'
       '<text x="80" y="49" font-size="12.5" font-weight="800" fill="#d98a1f" letter-spacing="4">LAB</text></svg>')
 
@@ -157,7 +159,7 @@ def _instala_pwa():
     meta('mobile-web-app-capable', 'yes');
     meta('apple-mobile-web-app-status-bar-style', 'black-translucent');
     meta('apple-mobile-web-app-title', 'AS Endurance LAB');
-    meta('theme-color', '#0B0D10');
+    meta('theme-color', '#0a2026');
     d.title = 'AS Endurance LAB';
     // guarda o evento de instalação (Android/desktop) p/ o botão "Instalar"
     W.addEventListener('beforeinstallprompt', function(e) {{
@@ -732,7 +734,7 @@ def desenho_html(passos, altura=60):
         f'<div style="position:absolute;left:{b["x"]*100:.2f}%;'
         f'width:{max(b["w"]*100-0.35,0.4):.2f}%;bottom:0;'
         f'height:{max(b["h"],0.05)*100:.1f}%;border-radius:2px 2px 0 0;'
-        f'background:linear-gradient(180deg,#FF6B35,#E5480F);opacity:{.55+.45*b["h"]:.2f}"></div>'
+        f'background:linear-gradient(180deg,#f07a5a,#d9541f);opacity:{.55+.45*b["h"]:.2f}"></div>'
         for b in passos)
     return (f'<div style="position:relative;height:{altura}px;margin:2px 0 10px;'
             f'border-bottom:1px solid rgba(255,255,255,.18)">{barras}</div>')
@@ -939,7 +941,7 @@ elif page.startswith("⚙️"): page_acoes(mes)
 
 import streamlit.components.v1 as _cc
 _cc.html('''<div style="text-align:right;font-family:Avenir Next,system-ui;padding:6px 0">
-  <button id="ib" style="display:none;background:#FF6B35;color:#fff;
+  <button id="ib" style="display:none;background:linear-gradient(135deg,#f07a5a,#e5613f);color:#fff;
     border:0;border-radius:12px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer">
     📲 Instalar app</button></div>
 <script>
@@ -950,5 +952,5 @@ _cc.html('''<div style="text-align:right;font-family:Avenir Next,system-ui;paddi
 
 st.markdown('<div style="margin-top:2.5rem;padding-top:14px;border-top:1px solid #232A33;'
             'color:#78848F;font-size:.76rem;display:flex;justify-content:space-between">'
-            '<span><b style="color:#F2F5F7">AS</b> ENDURANCE <span style="color:#FF6B35">LAB</span> · Cloud</span>'
+            '<span><b style="color:#F2F5F7">AS</b> ENDURANCE <span style="color:#d98a1f">LAB</span> · Cloud</span>'
             '<span>montar treino e coleta rodam no Mac · a nuvem comanda</span></div>', unsafe_allow_html=True)
