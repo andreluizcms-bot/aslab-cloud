@@ -5,7 +5,7 @@ Deploy: Streamlit Community Cloud. Secrets necessários (Settings → Secrets):
   DB_URL = "postgresql://postgres:...@db.xxxx.supabase.co:5432/postgres"
   APP_PASSWORD = "escolha-uma-senha-forte"
 """
-import os, string, datetime as dt
+import os, json, string, datetime as dt
 import pandas as pd
 import altair as alt
 import streamlit as st
@@ -194,6 +194,44 @@ def q(sql, params=()):
     except Exception:
         con.rollback(); raise
 
+# ---------- fila de comandos (a nuvem pede, o Mac executa) ----------
+def enfileirar(tipo, params):
+    con=_conn()
+    try:
+        with con.cursor() as c:
+            c.execute("INSERT INTO comandos(tipo, params) VALUES(%s, %s::jsonb) RETURNING id",
+                      (tipo, json.dumps(params or {})))
+            cid=c.fetchone()[0]
+        con.commit(); return cid
+    finally:
+        con.close()
+
+def cmd(cid):
+    """Situação de um comando: (status, resultado)."""
+    con=_conn()
+    try:
+        with con.cursor() as c:
+            c.execute("SELECT status, resultado FROM comandos WHERE id=%s", (cid,))
+            r=c.fetchone()
+        return (r[0], r[1]) if r else ("sumiu", None)
+    finally:
+        con.close()
+
+def esperar(cid, segundos=240, msg="Mandando para o Mac…"):
+    """Aguarda o Mac executar. Devolve (status, resultado)."""
+    import time
+    barra=st.progress(0.0, text=msg)
+    for i in range(segundos):
+        stt, res = cmd(cid)
+        if stt in ("ok","erro"):
+            barra.empty(); return stt, res
+        barra.progress(min(0.97,(i+1)/segundos),
+                       text=f'{msg} ({stt} · {i+1}s)' if stt!="pendente"
+                            else f'Na fila do Mac… ({i+1}s)')
+        time.sleep(1)
+    barra.empty()
+    return "esperando", None
+
 MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto",
        "setembro","outubro","novembro","dezembro"]
 MA=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
@@ -208,7 +246,8 @@ def _ay():
 # ---------- header ----------
 hd=st.columns([1.5,4.5], vertical_alignment="center")
 hd[0].markdown(f'<div class="logo">{LOGO}</div>', unsafe_allow_html=True)
-page=hd[1].radio("Seção", ["👥 Equipe","🧑‍💼 Atleta","🏆 Liga","🧭 Periodização","🎯 Provas","🚨 Perdidos"],
+page=hd[1].radio("Seção", ["👥 Equipe","🧑‍💼 Atleta","🏆 Liga","🧭 Periodização","🎯 Provas",
+                           "🚨 Perdidos","🏋️ Montar treino","⚙️ Ações"],
                  horizontal=True, label_visibility="collapsed")
 
 try:
@@ -539,7 +578,7 @@ elif page.startswith("🏆"):
     page_liga_cloud(mes)
 
 elif page.startswith("🧭"):
-    hero("Periodização", "Planejado × realizado — edição no painel do Mac", "ATP do Lab")
+    hero("Periodização", "Planejado × realizado — o ciclo se cria no painel do Mac", "ATP do Lab")
     pl=q("""SELECT p.id, a.nome||' · '||p.nome||' · prova '||p.prova_data lab, p.atleta_id, p.inicio, p.prova_data
             FROM periodizacao p JOIN atletas a ON a.id=p.atleta_id ORDER BY p.prova_data DESC""")
     if not len(pl): st.info("Nenhum ciclo criado ainda."); st.stop()
@@ -594,6 +633,225 @@ else:
     if len(f): html_table(f)
     else: st.success("Ninguém faltou nesse dia. ✅")
 
+
+# ---------- montar treino (a nuvem enfileira, o Mac publica no TP) ----------
+TIPOS=[("","— folga —"),("limiar","Limiar"),("limiar_prefadiga","Limiar c/ pré-fadiga"),
+       ("escada_limiar","Escada de limiar"),("segundo_limiar","Segundo limiar"),
+       ("limiar_vo2","Limiar + VO2"),("vo2max","VO2max"),("ritmo_prova","Ritmo de prova"),
+       ("over_under","Over/Under"),("piramide","Pirâmide"),("fartlek","Fartlek"),
+       ("longo","Longo"),("longo_continuo","Longo contínuo"),("longo_trocas","Longo com trocas"),
+       ("longo_bloco","Longo em bloco"),("progressivo","Progressivo"),("rodagem","Rodagem"),
+       ("corre_anda","Corre e anda"),("forca","Força (academia)")]
+TIPO_LABEL={v:t for v,t in TIPOS}
+DIAS_PT=["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"]
+
+def desenho_html(passos, altura=60):
+    """Silhueta do treino — mesmas barras que o gerador desenha no Mac."""
+    if not passos: return ""
+    barras="".join(
+        f'<div style="position:absolute;left:{b["x"]*100:.2f}%;'
+        f'width:{max(b["w"]*100-0.35,0.4):.2f}%;bottom:0;'
+        f'height:{max(b["h"],0.05)*100:.1f}%;border-radius:2px 2px 0 0;'
+        f'background:linear-gradient(180deg,#f07a5a,#d9541f);opacity:{.55+.45*b["h"]:.2f}"></div>'
+        for b in passos)
+    return (f'<div style="position:relative;height:{altura}px;margin:2px 0 10px;'
+            f'border-bottom:1px solid rgba(255,255,255,.18)">{barras}</div>')
+
+def page_montar():
+    hero("Montar treino", "Bloco estruturado publicado no TrainingPeaks — oculto do atleta",
+         "🏋️ Gerador")
+    ath=q("SELECT id, nome FROM atletas WHERE ativo=1 ORDER BY nome")
+    if not len(ath):
+        st.info("Sem atletas sincronizados."); return
+    c=st.columns([3,1.4], vertical_alignment="bottom")
+    nome=c[0].selectbox("Atleta", ath["nome"].tolist(), key="mt_atleta")
+    aid=str(ath[ath["nome"]==nome].iloc[0]["id"])
+    if c[1].button("Carregar atleta", use_container_width=True):
+        cid=enfileirar("perfil", {"athlete_id": aid})
+        stt,res=esperar(cid, 180, "Lendo o atleta no TrainingPeaks…")
+        if stt=="ok":
+            st.session_state["mt_perfil"]={"aid":aid, **json.loads(res)}
+            st.rerun()
+        else: st.error(res or "O Mac não respondeu — ele precisa estar ligado.")
+
+    perfil=st.session_state.get("mt_perfil") or {}
+    if perfil.get("aid")!=aid: perfil={}
+    base_sug=perfil.get("base_sugerida") or {}
+    threshold_ms=None
+    if not perfil:
+        st.info("Carregue o atleta primeiro — é dele que vêm as zonas e a base do bloco.")
+        return
+    if perfil.get("ancora_pace"):
+        st.caption(f'Zonas do TrainingPeaks · limiar {perfil["ancora_pace"]}/km')
+    else:
+        # sem zonas no TP o gerador precisa de um ritmo de referência
+        est=(perfil.get("threshold_estimado") or {}); cad=(perfil.get("threshold_cadastrado") or {})
+        ops=[]
+        if est.get("ms"): ops.append((f'Estimado pelo histórico · {est.get("pace")}/km', est["ms"]))
+        if cad.get("ms"): ops.append((f'Cadastrado no TP · {cad.get("pace")}/km', cad["ms"]))
+        ops.append(("Digitar o ritmo", None))
+        st.warning("Sem zonas no TrainingPeaks. Escolha o ritmo de limiar do atleta:")
+        rot=st.radio("Ritmo de limiar", [o[0] for o in ops], horizontal=True,
+                     label_visibility="collapsed")
+        threshold_ms=dict(ops)[rot]
+        if threshold_ms is None:
+            cp=st.columns([1,1,4])
+            mm=cp[0].number_input("min/km", 2, 9, 5); ss=cp[1].number_input("seg", 0, 59, 0)
+            threshold_ms=1000.0/(mm*60+ss) if (mm*60+ss) else None
+            cp[2].markdown(f'<div style="padding-top:28px;color:#8fa6ad">limiar de '
+                           f'<b style="color:#eaf3f4">{mm}:{ss:02d}</b>/km</div>',
+                           unsafe_allow_html=True)
+
+    seg=dt.date.today()+dt.timedelta(days=(7-dt.date.today().weekday()) % 7 or 7)
+    c=st.columns(3)
+    inicio=c[0].date_input("Começa na segunda", seg, format="DD/MM/YYYY")
+    nsem=c[1].number_input("Semanas", 1, 12, 4)
+    fim=inicio+dt.timedelta(days=int(nsem)*7-1)
+    c[2].markdown(f'<div style="padding-top:28px;color:#8fa6ad">até '
+                  f'<b style="color:#eaf3f4">{fim:%d/%m}</b></div>', unsafe_allow_html=True)
+
+    sect("Semana padrão")
+    st.caption("Vale para todas as semanas do bloco; o volume progride sozinho.")
+    dias={}
+    for lin in (range(0,4),range(4,7)):
+        cs=st.columns(len(list(lin)))
+        for j,di in enumerate(lin):
+            dias[di]=cs[j].selectbox(DIAS_PT[di], [v for v,_ in TIPOS],
+                                     format_func=lambda v: TIPO_LABEL[v],
+                                     key=f"mt_d{di}", label_visibility="visible")
+    marcados={str(k):v for k,v in dias.items() if v}
+
+    with st.expander("Ajustes finos"):
+        c=st.columns(4)
+        b_longo=c[0].number_input("Longo inicial (km)", 4.0, 45.0,
+                                  float(base_sug.get("longo_km") or 12), step=1.0)
+        b_limiar=c[1].number_input("Limiar inicial (min)", 4.0, 80.0,
+                                   float(base_sug.get("limiar_min") or 20), step=1.0)
+        b_vo2=c[2].number_input("VO2 inicial (seg)", 60.0, 1800.0,
+                                float(base_sug.get("vo2_seg") or 480), step=30.0)
+        b_rod=c[3].number_input("Rodagem inicial (min)", 15.0, 120.0,
+                                float(base_sug.get("rodagem_min") or 45), step=5.0)
+        c=st.columns(4)
+        prog=c[0].number_input("Progressão (%/sem)", 0.0, 25.0, 10.0, step=1.0)
+        rec_cada=c[1].number_input("Recuperar a cada", 2, 8, 4)
+        rec_corte=c[2].number_input("Corte na recuperação (%)", 10.0, 60.0, 32.0, step=2.0)
+        longo_max=c[3].number_input("Teto do longo (km, 0 = sem teto)", 0.0, 60.0, 0.0, step=1.0)
+        seguir=st.checkbox("Seguir a periodização do Lab (se o atleta tiver ciclo)",
+                           value=bool(perfil.get("periodizacao")))
+        prova=st.text_input("Prova alvo (opcional)", "")
+
+    if st.button("Gerar prévia", type="primary", disabled=not marcados,
+                 use_container_width=True):
+        payload={"athlete_id": aid, "inicio": inicio.isoformat(), "fim": fim.isoformat(),
+                 "semanas_tipos": {str(w): marcados for w in range(1, int(nsem)+1)},
+                 "base": {"longo_km": b_longo, "limiar_min": b_limiar,
+                          "vo2_seg": b_vo2, "rodagem_min": b_rod},
+                 "progressao_pct": prog, "recup_cada": int(rec_cada),
+                 "recup_corte_pct": rec_corte,
+                 "longo_max_km": longo_max or None,
+                 "seguir_periodizacao": bool(seguir),
+                 "prova": prova or None, "checar_conflitos": True}
+        if threshold_ms: payload["threshold_ms"]=threshold_ms
+        cid=enfileirar("bloco_previa", {"payload": payload})
+        stt,res=esperar(cid, 300, "Montando o bloco no Mac…")
+        if stt=="ok":
+            st.session_state["mt_previa"]={"cid":cid, "aid":aid, "nome":nome,
+                                           "d":json.loads(res)}
+            st.rerun()
+        elif stt=="erro": st.error(res)
+        else: st.warning("Ainda rodando. Abra de novo daqui a pouco — o pedido não se perde.")
+
+    pv=st.session_state.get("mt_previa")
+    if not pv or pv["aid"]!=aid: return
+    d=pv["d"]; sess=d.get("sessoes") or []
+    sect(f'Prévia · {len(sess)} sessões · {d.get("total_km")} km')
+    if d.get("plano_aplicado"): st.caption("Volume ditado pela periodização do Lab. ✅")
+    st.caption(d.get("origem_zonas") or "")
+    escolhidas=[]
+    ini0=dt.date.fromisoformat(sess[0]["data"]) if sess else inicio
+    ini0-=dt.timedelta(days=ini0.weekday())
+    atual=None
+    for s0 in sess:
+        dd=dt.date.fromisoformat(s0["data"])
+        wk=(dd-ini0).days//7+1
+        if wk!=atual:
+            atual=wk
+            km_s=sum(x.get("km") or 0 for x in sess
+                     if (dt.date.fromisoformat(x["data"])-ini0).days//7+1==wk)
+            st.markdown(f'<div style="margin:16px 0 6px;color:#d98a1f;font-weight:700;'
+                        f'font-size:.78rem;letter-spacing:.09em;text-transform:uppercase">'
+                        f'Semana {wk} · {km_s:.0f} km</div>', unsafe_allow_html=True)
+        cc=st.columns([1,14], vertical_alignment="center")
+        if cc[0].checkbox(f'incluir {dd:%d/%m}', True, key=f'mt_s_{s0["data"]}',
+                          label_visibility="collapsed"):
+            escolhidas.append(s0["data"])
+        with cc[1].expander(f'{WD[dd.weekday()]} {dd:%d/%m} · {s0.get("titulo","")}'
+                            f'  ·  {s0.get("km","?")} km'):
+            st.markdown(desenho_html(s0.get("desenho")), unsafe_allow_html=True)
+            st.caption(f'{s0.get("minutos","?")} min · {s0.get("km","?")} km')
+            if s0.get("descricao"):
+                st.markdown(f'<div style="white-space:pre-wrap;color:#b9cace;'
+                            f'font-size:.83rem;line-height:1.5">{s0["descricao"]}</div>',
+                            unsafe_allow_html=True)
+    conf=d.get("conflitos") or []
+    apagar=[]
+    if conf:
+        st.warning(f'{len(conf)} treino(s) já existem nessas datas.')
+        if st.checkbox("Apagar os treinos que já estão lá antes de publicar"):
+            apagar=[c0["id"] for c0 in conf]
+    st.caption("Todo treino vai **oculto** do atleta — você libera no TrainingPeaks.")
+    if st.button(f'Publicar {len(escolhidas)} treino(s) no TrainingPeaks',
+                 type="primary", disabled=not escolhidas, use_container_width=True):
+        cid=enfileirar("bloco_publicar", {"athlete_id": aid, "atleta_nome": pv["nome"],
+                                          "previa_id": pv["cid"], "dias": escolhidas,
+                                          "apagar_ids": apagar})
+        stt,res=esperar(cid, 600, "Publicando no TrainingPeaks…")
+        if stt=="ok":
+            st.success(res); st.session_state.pop("mt_previa", None); q.clear()
+        elif stt=="erro": st.error(res)
+        else: st.info("Continua rodando no Mac. Confira em ⚙️ Ações.")
+
+# ---------- ações remotas ----------
+def page_acoes(mes):
+    hero("Ações", "A nuvem pede, o Mac executa e devolve o resultado", "⚙️ Controle")
+    c=st.columns(3)
+    if c[0].button("🔄 Atualizar do TrainingPeaks", use_container_width=True):
+        cid=enfileirar("coletar", {"mes": mes})
+        stt,res=esperar(cid, 900, "Coletando no TrainingPeaks…")
+        if stt=="ok": st.success(res); q.clear()
+        elif stt=="erro": st.error(res)
+        else: st.info("Coleta longa — segue rodando no Mac.")
+    if c[1].button("📄 Gerar PDFs do mês", use_container_width=True):
+        cid=enfileirar("pdfs_mes", {"mes": mes})
+        stt,res=esperar(cid, 900, "Gerando os relatórios…")
+        if stt=="ok": st.success(f"{res} · os PDFs ficam na pasta do Mac.")
+        elif stt=="erro": st.error(res)
+        else: st.info("Segue rodando no Mac.")
+    if c[2].button("☁️ Sincronizar de novo", use_container_width=True):
+        cid=enfileirar("sync", {})
+        stt,res=esperar(cid, 300, "Sincronizando…")
+        if stt=="ok": st.success(res); q.clear()
+        elif stt=="erro": st.error(res)
+
+    sect("Últimos pedidos")
+    h=q("""SELECT id, tipo, status, resultado,
+                  to_char(criado AT TIME ZONE 'America/Sao_Paulo','DD/MM HH24:MI') quando
+           FROM comandos ORDER BY id DESC LIMIT 12""")
+    if not len(h):
+        st.caption("Nada pedido ainda."); return
+    ICO={"ok":"✅","erro":"❌","executando":"⏳","pendente":"🕐"}
+    for _,r in h.iterrows():
+        txt=(r["resultado"] or "")
+        if r["tipo"]=="bloco_previa" and r["status"]=="ok": txt="prévia gerada"
+        st.markdown(f'<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)">'
+                    f'{ICO.get(r["status"],"·")} <b>{r["tipo"]}</b> '
+                    f'<span style="color:#8fa6ad">· {r["quando"]}</span><br>'
+                    f'<span style="color:#8fa6ad;font-size:.82rem">{txt[:220]}</span></div>',
+                    unsafe_allow_html=True)
+
+if page=="🏋️ Montar treino": page_montar()
+elif page=="⚙️ Ações": page_acoes(mes)
+
 import streamlit.components.v1 as _cc
 _cc.html('''<div style="text-align:right;font-family:Avenir Next,system-ui;padding:6px 0">
   <button id="ib" style="display:none;background:linear-gradient(135deg,#f07a5a,#e5613f);color:#fff;
@@ -608,4 +866,4 @@ _cc.html('''<div style="text-align:right;font-family:Avenir Next,system-ui;paddi
 st.markdown('<div style="margin-top:2.5rem;padding-top:14px;border-top:1px solid rgba(255,255,255,.09);'
             'color:#8fa6ad;font-size:.76rem;display:flex;justify-content:space-between">'
             '<span><b style="color:#eaf3f4">AS</b> ENDURANCE <span style="color:#d98a1f">LAB</span> · Cloud</span>'
-            '<span>somente leitura · edição e coleta no painel do Mac</span></div>', unsafe_allow_html=True)
+            '<span>montar treino e coleta rodam no Mac · a nuvem comanda</span></div>', unsafe_allow_html=True)
