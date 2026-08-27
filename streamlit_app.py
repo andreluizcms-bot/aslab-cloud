@@ -123,6 +123,9 @@ def _instala_pwa():
       if (extra) Object.keys(extra).forEach(function(k) {{ l.setAttribute(k, extra[k]); }});
       d.head.appendChild(l);
     }}
+    // remove as tags padrão do Streamlit (o navegador usa a PRIMEIRA de cada tipo)
+    ['link[rel="manifest"]','meta[name="theme-color"]','link[rel="apple-touch-icon"]']
+      .forEach(function(sel) {{ d.querySelectorAll(sel).forEach(function(el) {{ el.remove(); }}); }});
     link('manifest', 'data:application/json;base64,{MANIFEST_B64}');
     link('apple-touch-icon', 'data:image/png;base64,{ICON_180}', {{sizes: '180x180'}});
     meta('apple-mobile-web-app-capable', 'yes');
