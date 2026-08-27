@@ -12,73 +12,98 @@ import streamlit as st
 
 st.set_page_config(page_title="AS Endurance LAB", page_icon="🏃", layout="wide")
 
-# ---------- tema (identidade do painel local) ----------
+# ---------- tema: painel esportivo (preto de prova, cor por domínio) ----------
+# laranja = carga/km · verde = recuperação · azul = sono/base · vermelho = falta
+COR=dict(carga="#FF6B35", recup="#2EE6A8", sono="#6C9EFF", alerta="#FF4D5E", ouro="#F2A541")
 DARK=dict(
-  bg=("radial-gradient(1000px 620px at 88% -12%, rgba(238,108,77,.13), transparent 62%),"
-      "radial-gradient(900px 560px at -6% 108%, rgba(63,142,160,.16), transparent 60%),"
-      "linear-gradient(180deg,#0a2026,#07171d)"),
-  text="#eaf3f4", mut="#8fa6ad", line="#1a4450",
-  hero="linear-gradient(150deg, rgba(255,255,255,.075), rgba(255,255,255,.02))",
-  metric="linear-gradient(160deg, rgba(255,255,255,.06), rgba(255,255,255,.018))",
-  card="linear-gradient(160deg, rgba(255,255,255,.045), rgba(255,255,255,.012))",
-  gbrd="rgba(255,255,255,.09)", hovbg="rgba(255,255,255,.05)",
-  inbg="rgba(14,44,52,.85)", th="rgba(16,50,59,.92)", talt="rgba(255,255,255,.028)",
-  chiptx="#f2a541", ax="#8fa6ad", grid="#123037", val="#c9d6d9", shc="4,19,26")
+  bg="#0B0D10",
+  text="#F2F5F7", mut="#78848F", line="#1E242C",
+  hero="#101318",
+  metric="#14181E",
+  card="#14181E",
+  gbrd="#232A33", hovbg="#191F27",
+  inbg="#14181E", th="#10141A", talt="rgba(255,255,255,.022)",
+  chiptx="#F2A541", ax="#78848F", grid="#171D24", val="#C9D2D9", shc="0,0,0")
 P=DARK
-_CSS=string.Template('''
+_CSS=string.Template("""
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700&family=Inter:wght@400;600;800&display=swap');
 #MainMenu,[data-testid="stToolbarActions"],[data-testid="stAppDeployButton"],[data-testid="stDecoration"],footer{display:none!important}
 header[data-testid="stHeader"]{display:none!important}
 [data-testid="stSidebar"]{display:none!important}
-.stApp{background:$bg;background-attachment:fixed}
-.stApp,.stMarkdown,.stMarkdown *,h1,h2,h3,p,label,[data-testid="stMetricValue"],[data-testid="stMetricLabel"] *{
-  color:$text;font-family:"Avenir Next","Segoe UI",system-ui,sans-serif}
-.block-container{padding-top:1rem;max-width:1280px}
-[data-testid="stWidgetLabel"] p{color:$text!important}
-[data-baseweb="select"]>div{background:$inbg!important;border-color:$gbrd!important;border-radius:13px!important}
+.stApp{background:$bg}
+.stApp,.stMarkdown,.stMarkdown *,p,label,[data-testid="stMetricLabel"] *{
+  color:$text;font-family:Inter,"Avenir Next",system-ui,sans-serif}
+h1,h2,h3{color:$text;font-family:"Barlow Condensed",Inter,sans-serif}
+.block-container{padding-top:.9rem;max-width:1280px}
+[data-testid="stWidgetLabel"] p{color:$mut!important;font-size:.72rem!important;
+  text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+[data-baseweb="select"]>div{background:$inbg!important;border-color:$gbrd!important;border-radius:10px!important}
 [data-baseweb="select"] div,[data-baseweb="select"] span{color:$text!important}
 [data-baseweb="popover"] [role="listbox"]{background:$inbg!important}
 [data-baseweb="popover"] li,[data-baseweb="popover"] li *{background:transparent!important;color:$text!important}
-.stTextInput input{background:$inbg!important;color:$text!important;border-color:$gbrd!important;border-radius:13px!important}
-.hero{background:$hero;border:1px solid $gbrd;border-radius:22px;padding:18px 24px;margin:0 0 16px;
-  box-shadow:0 16px 40px rgba($shc,.28);backdrop-filter:blur(16px)}
-.hero .kick{display:inline-block;color:#e0952a;font-weight:800;letter-spacing:2px;font-size:.66rem;
-  text-transform:uppercase;padding:3px 11px;border-radius:20px;background:rgba(242,165,65,.12);
-  border:1px solid rgba(242,165,65,.32);margin-bottom:6px}
-.hero h1{margin:0;font-size:1.7rem;letter-spacing:-.6px}
-.hero .sub{color:$mut;font-size:.9rem;margin-top:4px}
-[data-testid="stMetric"]{background:$metric;border:1px solid $gbrd;border-radius:18px;padding:14px 16px 11px;
-  box-shadow:0 10px 24px rgba($shc,.2);backdrop-filter:blur(12px);position:relative;overflow:hidden}
-[data-testid="stMetric"]:before{content:"";position:absolute;left:0;top:0;height:3px;width:100%;
-  background:linear-gradient(90deg,#ee6c4d,#f2a541)}
-[data-testid="stMetricLabel"] p{color:$mut!important;font-size:.62rem;font-weight:800;text-transform:uppercase}
-[data-testid="stMetricValue"]{font-weight:800;font-size:1.35rem;font-variant-numeric:tabular-nums}
-[role="radiogroup"] label{padding:7px 12px;border-radius:12px;border:1px solid transparent}
+.stTextInput input{background:$inbg!important;color:$text!important;border-color:$gbrd!important;border-radius:10px!important}
+.hero{background:$hero;border:1px solid $gbrd;border-radius:16px;padding:14px 20px 12px;margin:0 0 14px}
+.hero .kick{display:inline-block;color:#FF6B35;font-weight:800;letter-spacing:.18em;font-size:.62rem;
+  text-transform:uppercase;margin-bottom:2px}
+.hero h1{margin:0;font-size:2.3rem;line-height:1;letter-spacing:.02em;text-transform:uppercase;
+  font-family:"Barlow Condensed",sans-serif;font-weight:700;font-style:italic}
+.hero .sub{color:$mut;font-size:.84rem;margin-top:3px}
+[data-testid="stMetric"]{background:$metric;border:1px solid $gbrd;border-radius:14px;
+  padding:12px 15px 9px;position:relative;overflow:hidden}
+[data-testid="stMetric"]:before{content:"";position:absolute;left:0;bottom:0;height:3px;width:100%;
+  background:#FF6B35}
+[data-testid="stMetricLabel"] p{color:$mut!important;font-size:.6rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.1em}
+[data-testid="stMetricValue"]{font-family:"Barlow Condensed",sans-serif;font-weight:700;
+  font-size:2.1rem;line-height:1.05;font-variant-numeric:tabular-nums;color:$text}
+[role="radiogroup"]{gap:4px}
+[role="radiogroup"] label{padding:7px 13px;border-radius:999px;border:1px solid $gbrd;background:$card}
 [role="radiogroup"] label>div:first-child{display:none}
-[role="radiogroup"] label p{font-weight:600;font-size:.9rem}
-[role="radiogroup"] label:has(input:checked){background:rgba(242,165,65,.16);border-color:rgba(242,165,65,.42)}
-.sect{font-weight:800;font-size:1rem;margin:.4rem 0 .5rem;display:flex;align-items:center;gap:9px}
-.sect:before{content:"";width:8px;height:8px;border-radius:3px;background:linear-gradient(135deg,#ee6c4d,#f2a541)}
-.tblwrap{max-height:460px;overflow:auto;border:1px solid $gbrd;border-radius:14px}
+[role="radiogroup"] label p{font-weight:600;font-size:.86rem}
+[role="radiogroup"] label:has(input:checked){background:#FF6B35;border-color:#FF6B35}
+[role="radiogroup"] label:has(input:checked) p{color:#0B0D10!important;font-weight:800}
+.sect{font-weight:800;font-size:.82rem;margin:.6rem 0 .5rem;display:flex;align-items:center;gap:8px;
+  text-transform:uppercase;letter-spacing:.12em;color:$mut}
+.sect:before{content:"";width:14px;height:3px;background:#FF6B35}
+.tblwrap{max-height:460px;overflow:auto;border:1px solid $gbrd;border-radius:12px;background:$card}
 table.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:.84rem}
-table.tbl th{position:sticky;top:0;background:$th;color:$mut;text-align:left;padding:9px 11px;font-weight:800;
-  font-size:.66rem;text-transform:uppercase;border-bottom:1px solid $gbrd;z-index:1}
+table.tbl th{position:sticky;top:0;background:$th;color:$mut;text-align:left;padding:9px 11px;font-weight:700;
+  font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid $gbrd;z-index:1}
 table.tbl td{padding:7px 11px;border-bottom:1px solid $line;white-space:nowrap;font-variant-numeric:tabular-nums}
 table.tbl tr:nth-child(even) td{background:$talt}
 table.tbl td.num,table.tbl th.num{text-align:right}
-.tick{font-family:ui-monospace,Menlo,monospace;font-size:.68rem;letter-spacing:.06em;color:$mut;
+.tick{font-family:ui-monospace,Menlo,monospace;font-size:.66rem;letter-spacing:.06em;color:$mut;
   text-transform:uppercase;display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:7px 14px;
-  border:1px solid $gbrd;border-radius:12px;background:$card;margin:2px 0 12px;font-variant-numeric:tabular-nums}
+  border:1px solid $gbrd;border-radius:10px;background:$card;margin:2px 0 12px;font-variant-numeric:tabular-nums}
 .tick b{color:$chiptx;font-weight:600}
+.ringrow{display:flex;gap:14px;align-items:center;background:$card;border:1px solid $gbrd;
+  border-radius:14px;padding:10px 14px}
+.ringlab{font-size:.6rem;color:$mut;text-transform:uppercase;letter-spacing:.1em;font-weight:700}
+.ringval{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:1.5rem;line-height:1.1}
 .logo svg{display:block}
-''')
+""")
 st.markdown("<style>"+_CSS.substitute(P)+"</style>", unsafe_allow_html=True)
-
 def hero(t, sub="", kick=""):
     k=f'<div class="kick">{kick}</div>' if kick else ""
     s=f'<div class="sub">{sub}</div>' if sub else ""
     st.markdown(f'<div class="hero">{k}<h1>{t}</h1>{s}</div>', unsafe_allow_html=True)
 
 def sect(t): st.markdown(f'<div class="sect">{t}</div>', unsafe_allow_html=True)
+
+def ring(pct, cor, valor, rotulo, sub=""):
+    """Anel de progresso estilo relógio esportivo. pct em 0..1."""
+    pct=max(0.0, min(1.0, pct or 0)); r=30; c=2*3.14159*r
+    svg=(f'<svg width="76" height="76" viewBox="0 0 76 76">'
+         f'<circle cx="38" cy="38" r="{r}" fill="none" stroke="{P["grid"]}" stroke-width="7"/>'
+         f'<circle cx="38" cy="38" r="{r}" fill="none" stroke="{cor}" stroke-width="7" '
+         f'stroke-linecap="round" stroke-dasharray="{c*pct:.1f} {c:.1f}" '
+         f'transform="rotate(-90 38 38)"/>'
+         f'<text x="38" y="44" text-anchor="middle" fill="{P["text"]}" font-size="17" '
+         f'font-weight="700" font-family="Barlow Condensed,sans-serif">{pct*100:.0f}%</text></svg>')
+    sub=f'<div class="ringlab" style="color:{P["mut"]};text-transform:none;letter-spacing:0">{sub}</div>' if sub else ""
+    st.markdown(f'<div class="ringrow">{svg}<div><div class="ringlab">{rotulo}</div>'
+                f'<div class="ringval" style="color:{cor}">{valor}</div>{sub}</div></div>',
+                unsafe_allow_html=True)
 
 def html_table(df, num=()):
     import html as _h
@@ -95,7 +120,7 @@ def html_table(df, num=()):
 LOGO=('<svg viewBox="0 0 250 60" width="180" xmlns="http://www.w3.org/2000/svg" '
       'font-family="Avenir Next,Helvetica,Arial,sans-serif">'
       '<text x="0" y="45" font-size="39" font-weight="800" fill="#eaf3f4" letter-spacing="-2">AS</text>'
-      '<rect x="64" y="12" width="3.4" height="39" rx="1.7" fill="#ee6c4d"/>'
+      '<rect x="64" y="12" width="3.4" height="39" rx="1.7" fill="#FF6B35"/>'
       '<text x="80" y="31" font-size="12.5" font-weight="700" fill="#eaf3f4" letter-spacing="4">ENDURANCE</text>'
       '<text x="80" y="49" font-size="12.5" font-weight="800" fill="#d98a1f" letter-spacing="4">LAB</text></svg>')
 
@@ -132,7 +157,7 @@ def _instala_pwa():
     meta('mobile-web-app-capable', 'yes');
     meta('apple-mobile-web-app-status-bar-style', 'black-translucent');
     meta('apple-mobile-web-app-title', 'AS Endurance LAB');
-    meta('theme-color', '#0a2026');
+    meta('theme-color', '#0B0D10');
     d.title = 'AS Endurance LAB';
     // guarda o evento de instalação (Android/desktop) p/ o botão "Instalar"
     W.addEventListener('beforeinstallprompt', function(e) {{
@@ -471,11 +496,19 @@ if page.startswith("👥"):
             FROM treinos t JOIN atletas a ON a.id=t.atleta_id AND a.ativo=1
             WHERE t.mes=%s GROUP BY a.nome HAVING SUM(CASE WHEN t.type='completed' THEN 1 ELSE 0 END)>0
             ORDER BY 2 DESC""",(mes,))
-    c=st.columns(4)
-    c[0].metric("Atletas", len(df))
-    c[1].metric("Km totais", f'{df["Km"].sum():,.0f}'.replace(",","."))
-    c[2].metric("Sessões", int(df["Sessões"].sum()))
-    c[3].metric("Km bike", f'{df["Bike km"].sum():,.0f}'.replace(",","."))
+    ont=hoje-dt.timedelta(days=1)
+    at=q("""SELECT (SELECT COUNT(*) FROM atletas WHERE ativo=1) total,
+                   COUNT(DISTINCT t.atleta_id) trein
+            FROM treinos t JOIN atletas a ON a.id=t.atleta_id AND a.ativo=1
+            WHERE t.date=%s AND t.type='completed'""",(ont.isoformat(),)).iloc[0]
+    c=st.columns([1.5,1,1,1,1], vertical_alignment="center")
+    with c[0]:
+        ring((at["trein"] or 0)/max(int(at["total"]) or 1,1), COR["carga"],
+             f'{int(at["trein"] or 0)}/{int(at["total"])}', "Treinaram ontem")
+    c[1].metric("Atletas", len(df))
+    c[2].metric("Km totais", f'{df["Km"].sum():,.0f}'.replace(",","."))
+    c[3].metric("Sessões", int(df["Sessões"].sum()))
+    c[4].metric("Km bike", f'{df["Bike km"].sum():,.0f}'.replace(",","."))
     busca=st.text_input("Buscar atleta","")
     if busca: df=df[df["Atleta"].str.contains(busca, case=False, na=False)]
     html_table(df, num={"Km","Bike km","Força","Sessões","FC média"})
@@ -493,10 +526,23 @@ elif page.startswith("🧑"):
                   ROUND(AVG(CASE WHEN kind='run' AND type='completed' THEN hr END)) fc,
                   ROUND(AVG(CASE WHEN kind='run' AND type='completed' THEN cad END)) cad
            FROM treinos WHERE atleta_id=%s AND mes=%s""",(aid,mes)).iloc[0]
-    c=st.columns(5)
-    c[0].metric("Corrida", f'{r["km"] or 0:.0f} km'); c[1].metric("Sessões", int(r["sess"] or 0))
-    c[2].metric("Horas", f'{r["hrs"] or 0}'); c[3].metric("FC média", f'{r["fc"] or 0:.0f}')
-    c[4].metric("Cadência", f'{r["cad"] or 0:.0f}')
+    pl=q("""SELECT COUNT(*) FILTER (WHERE type='planned' AND date<=%s) plan,
+                   COUNT(*) FILTER (WHERE type='completed') feitos
+            FROM treinos WHERE atleta_id=%s AND mes=%s""",
+         (hoje.isoformat(), aid, mes)).iloc[0]
+    c=st.columns([1.5,1,1,1,1], vertical_alignment="center")
+    with c[0]:
+        if int(pl["plan"] or 0)>0:
+            ade=min(int(pl["feitos"] or 0)/int(pl["plan"]),1.0)
+            ring(ade, COR["recup"] if ade>=.8 else (COR["ouro"] if ade>=.5 else COR["alerta"]),
+                 f'{int(pl["feitos"] or 0)}/{int(pl["plan"])}', "Aderência no mês")
+        else:
+            ring(1.0 if int(pl["feitos"] or 0) else 0.0, COR["recup"],
+                 f'{int(pl["feitos"] or 0)}', "Treinos no mês", "sem planejados")
+    c[1].metric("Corrida", f'{r["km"] or 0:.0f} km')
+    c[2].metric("Sessões", int(r["sess"] or 0))
+    c[3].metric("Horas", f'{r["hrs"] or 0}')
+    c[4].metric("FC média", f'{r["fc"] or 0:.0f}')
     # PMC
     fit=q("""SELECT date, ctl, atl, tsb FROM fitness_diario WHERE atleta_id=%s
              AND date>=%s ORDER BY date""",(aid,(hoje-dt.timedelta(days=90)).isoformat()))
@@ -504,11 +550,11 @@ elif page.startswith("🧑"):
         sect("Condição física · 90 dias")
         fit["date"]=pd.to_datetime(fit["date"])
         base=alt.Chart(fit).encode(x=alt.X("date:T", axis=alt.Axis(format="%d/%m", labelColor=P["ax"], grid=False, title=None)))
-        a1=base.mark_area(color="rgba(63,142,160,.25)", line={"color":"#3f8ea0","strokeWidth":2}).encode(
+        a1=base.mark_area(color="rgba(108,158,255,.20)", line={"color":COR["sono"],"strokeWidth":2}).encode(
             y=alt.Y("ctl:Q", axis=_ay(), title=None))
-        a2=base.mark_line(color="#ee6c4d", strokeWidth=1.5).encode(y="atl:Q")
-        a3=base.mark_line(color="#37b87f", strokeWidth=1.4, strokeDash=[4,3]).encode(
-            y=alt.Y("tsb:Q", axis=alt.Axis(labelColor="#37b87f", grid=False, title=None)))
+        a2=base.mark_line(color=COR["carga"], strokeWidth=1.5).encode(y="atl:Q")
+        a3=base.mark_line(color=COR["recup"], strokeWidth=1.4, strokeDash=[4,3]).encode(
+            y=alt.Y("tsb:Q", axis=alt.Axis(labelColor=COR["recup"], grid=False, title=None)))
         st.altair_chart(alt.layer(a1+a2, a3).resolve_scale(y="independent")
                         .properties(height=240, background="rgba(0,0,0,0)").configure_view(strokeWidth=0),
                         use_container_width=True)
@@ -520,7 +566,7 @@ elif page.startswith("🧑"):
     if len(evo):
         sect("Evolução · km por mês")
         evo["Mês"]=evo["mo"].map(lambda m: f'{MA[int(m[5:7])-1]}/{m[2:4]}')
-        ch=(alt.Chart(evo).mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5, size=26, color="#ee6c4d")
+        ch=(alt.Chart(evo).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=26, color=COR["carga"])
             .encode(x=alt.X("Mês:N", sort=None, axis=_ax()), y=alt.Y("km:Q", axis=_ay(), title=None),
                     tooltip=["Mês", alt.Tooltip("km:Q", format=".0f")])
             .properties(height=200, background="rgba(0,0,0,0)").configure_view(strokeWidth=0))
@@ -571,16 +617,16 @@ elif page.startswith("🧑"):
             st.caption("**VFC (HRV)** — pontos = dia · linha = média 7d · tracejado = sua média · faixa = zona normal")
             if len(_hrv):
                 _sd=_hrv.std() if len(_hrv)>3 else 0
-                ch=_trend(ms,"hrv","#37b87f", ref=_hrv.mean(), banda=(_hrv.mean()-_sd,_hrv.mean()+_sd))
+                ch=_trend(ms,"hrv",COR["recup"], ref=_hrv.mean(), banda=(_hrv.mean()-_sd,_hrv.mean()+_sd))
                 if ch is not None: st.altair_chart(ch, use_container_width=True)
         with g[1]:
             st.caption("**Sono** — pontos = noite · linha = média 7d · tracejado = 7h")
             if len(_sono):
-                ch=_trend(ms,"sono_h","#3f8ea0", ref=7.0, fmt=".1f")
+                ch=_trend(ms,"sono_h",COR["sono"], ref=7.0, fmt=".1f")
                 if ch is not None: st.altair_chart(ch, use_container_width=True)
         if ms["fc_rep"].notna().sum()>=3:
             st.caption("**FC de repouso** — subir junto com VFC caindo = sinal de fadiga/estresse")
-            ch=_trend(ms,"fc_rep","#ee6c4d", ref=ms["fc_rep"].mean(), h=160)
+            ch=_trend(ms,"fc_rep",COR["carga"], ref=ms["fc_rep"].mean(), h=160)
             if ch is not None: st.altair_chart(ch, use_container_width=True)
     # treinos do mês
     tt=q("""SELECT date "Data", title "Treino", kind, dist_km, dur_h, hr, cad, tss
@@ -617,7 +663,7 @@ elif page.startswith("🧭"):
         rk[wk]=rk.get(wk,0)+(x["dist_km"] or 0)
     sem["Semana"]=sem["inicio"].map(lambda s: dt.date.fromisoformat(s).strftime("%d/%m"))
     sem["Realizado"]=sem["inicio"].map(lambda s: rk.get(s))
-    CORES={"Base":"#3f8ea0","Específico":"#f2a541","Polimento":"#37b87f","Prova":"#ee6c4d","Recuperação":"#8fa6ad"}
+    CORES={"Base":COR["sono"],"Específico":COR["ouro"],"Polimento":COR["recup"],"Prova":COR["carga"],"Recuperação":"#78848F"}
     bars=(alt.Chart(sem).mark_bar(size=20, opacity=.85, cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
           .encode(x=alt.X("Semana:N", sort=None, axis=_ax()), y=alt.Y("km:Q", axis=_ay(), title=None),
                   color=alt.Color("fase:N", scale=alt.Scale(domain=list(CORES), range=list(CORES.values())),
@@ -676,7 +722,7 @@ def desenho_html(passos, altura=60):
         f'<div style="position:absolute;left:{b["x"]*100:.2f}%;'
         f'width:{max(b["w"]*100-0.35,0.4):.2f}%;bottom:0;'
         f'height:{max(b["h"],0.05)*100:.1f}%;border-radius:2px 2px 0 0;'
-        f'background:linear-gradient(180deg,#f07a5a,#d9541f);opacity:{.55+.45*b["h"]:.2f}"></div>'
+        f'background:linear-gradient(180deg,#FF6B35,#E5480F);opacity:{.55+.45*b["h"]:.2f}"></div>'
         for b in passos)
     return (f'<div style="position:relative;height:{altura}px;margin:2px 0 10px;'
             f'border-bottom:1px solid rgba(255,255,255,.18)">{barras}</div>')
@@ -883,7 +929,7 @@ elif page.startswith("⚙️"): page_acoes(mes)
 
 import streamlit.components.v1 as _cc
 _cc.html('''<div style="text-align:right;font-family:Avenir Next,system-ui;padding:6px 0">
-  <button id="ib" style="display:none;background:linear-gradient(135deg,#f07a5a,#e5613f);color:#fff;
+  <button id="ib" style="display:none;background:#FF6B35;color:#fff;
     border:0;border-radius:12px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer">
     📲 Instalar app</button></div>
 <script>
@@ -892,7 +938,7 @@ _cc.html('''<div style="text-align:right;font-family:Avenir Next,system-ui;paddi
  if (ev) {{ b.style.display='inline-block'; b.onclick=function(){{ ev.prompt(); }}; }}
 </script>''', height=44)
 
-st.markdown('<div style="margin-top:2.5rem;padding-top:14px;border-top:1px solid rgba(255,255,255,.09);'
-            'color:#8fa6ad;font-size:.76rem;display:flex;justify-content:space-between">'
-            '<span><b style="color:#eaf3f4">AS</b> ENDURANCE <span style="color:#d98a1f">LAB</span> · Cloud</span>'
+st.markdown('<div style="margin-top:2.5rem;padding-top:14px;border-top:1px solid #232A33;'
+            'color:#78848F;font-size:.76rem;display:flex;justify-content:space-between">'
+            '<span><b style="color:#F2F5F7">AS</b> ENDURANCE <span style="color:#FF6B35">LAB</span> · Cloud</span>'
             '<span>montar treino e coleta rodam no Mac · a nuvem comanda</span></div>', unsafe_allow_html=True)
