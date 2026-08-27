@@ -926,7 +926,7 @@ def page_acoes(mes):
           "sync":"sincronizar","perfil":"ler atleta","bloco_previa":"prévia de bloco",
           "bloco_publicar":"publicar treinos","email":"enviar e-mails"}
     for _,r in h.iterrows():
-        txt=(r["resultado"] or "")
+        txt="" if pd.isna(r["resultado"]) else str(r["resultado"])
         if r["status"]=="ok":      # respostas em JSON não interessam em texto cru
             if r["tipo"]=="bloco_previa": txt="prévia gerada"
             elif r["tipo"]=="perfil": txt="atleta lido no TrainingPeaks"
