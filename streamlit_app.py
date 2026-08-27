@@ -99,6 +99,47 @@ LOGO=('<svg viewBox="0 0 250 60" width="180" xmlns="http://www.w3.org/2000/svg" 
       '<text x="80" y="31" font-size="12.5" font-weight="700" fill="#eaf3f4" letter-spacing="4">ENDURANCE</text>'
       '<text x="80" y="49" font-size="12.5" font-weight="800" fill="#d98a1f" letter-spacing="4">LAB</text></svg>')
 
+# ---------- PWA: instalável na tela inicial (ícone, tela cheia, splash) ----------
+def _instala_pwa():
+    try:
+        from pwa_assets import ICON_180, MANIFEST_B64
+    except Exception:
+        return
+    import streamlit.components.v1 as _c
+    _c.html(f"""<script>
+(function() {{
+  try {{
+    var d = window.parent.document;
+    if (d.getElementById('aslab-pwa')) return;
+    var mark = d.createElement('meta'); mark.id='aslab-pwa'; d.head.appendChild(mark);
+    function meta(n, c, prop) {{
+      var m = d.createElement('meta');
+      m.setAttribute(prop ? 'property' : 'name', n); m.setAttribute('content', c);
+      d.head.appendChild(m);
+    }}
+    function link(rel, href, extra) {{
+      var l = d.createElement('link'); l.rel = rel; l.href = href;
+      if (extra) Object.keys(extra).forEach(function(k) {{ l.setAttribute(k, extra[k]); }});
+      d.head.appendChild(l);
+    }}
+    link('manifest', 'data:application/json;base64,{MANIFEST_B64}');
+    link('apple-touch-icon', 'data:image/png;base64,{ICON_180}', {{sizes: '180x180'}});
+    meta('apple-mobile-web-app-capable', 'yes');
+    meta('mobile-web-app-capable', 'yes');
+    meta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+    meta('apple-mobile-web-app-title', 'AS Endurance LAB');
+    meta('theme-color', '#0a2026');
+    d.title = 'AS Endurance LAB';
+    // guarda o evento de instalação (Android/desktop) p/ o botão "Instalar"
+    window.parent.addEventListener('beforeinstallprompt', function(e) {{
+      e.preventDefault(); window.parent.__aslabInstall = e;
+    }});
+  }} catch (e) {{}}
+}})();
+</script>""", height=0)
+
+_instala_pwa()
+
 # ---------- senha ----------
 def _sec(k):
     try: return st.secrets.get(k)
@@ -548,6 +589,17 @@ else:
     st.metric("Faltas no dia", len(f))
     if len(f): html_table(f)
     else: st.success("Ninguém faltou nesse dia. ✅")
+
+import streamlit.components.v1 as _cc
+_cc.html('''<div style="text-align:right;font-family:Avenir Next,system-ui;padding:6px 0">
+  <button id="ib" style="display:none;background:linear-gradient(135deg,#f07a5a,#e5613f);color:#fff;
+    border:0;border-radius:12px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer">
+    📲 Instalar app</button></div>
+<script>
+ var b=document.getElementById('ib');
+ var ev=window.parent.__aslabInstall;
+ if (ev) {{ b.style.display='inline-block'; b.onclick=function(){{ ev.prompt(); }}; }}
+</script>''', height=44)
 
 st.markdown('<div style="margin-top:2.5rem;padding-top:14px;border-top:1px solid rgba(255,255,255,.09);'
             'color:#8fa6ad;font-size:.76rem;display:flex;justify-content:space-between">'
