@@ -188,15 +188,31 @@ def _conn():
 
 @st.cache_data(ttl=300, show_spinner=False)
 def q(sql, params=()):
-    con=_conn()
-    try:
-        return pd.read_sql(sql, con, params=params)
-    except Exception:
-        con.rollback(); raise
+    import psycopg2
+    for tentativa in (1, 2):
+        con=_conn()
+        try:
+            return pd.read_sql(sql, con, params=params)
+        except (psycopg2.InterfaceError, psycopg2.OperationalError):
+            # conexão cacheada caiu (ocioso demais, pooler reciclou): abre outra
+            _conn.clear()
+            if tentativa == 2: raise
+        except Exception:
+            try: con.rollback()
+            except Exception: _conn.clear()
+            raise
 
 # ---------- fila de comandos (a nuvem pede, o Mac executa) ----------
+def _conn_rw():
+    """Conexão própria da fila — a de leitura é cacheada e não pode ser fechada."""
+    import psycopg2
+    url=_sec("DB_URL") or os.environ.get("DB_URL")
+    if not url:
+        st.error("⚙️ Falta configurar DB_URL nos Secrets."); st.stop()
+    return psycopg2.connect(url, connect_timeout=15)
+
 def enfileirar(tipo, params):
-    con=_conn()
+    con=_conn_rw()
     try:
         with con.cursor() as c:
             c.execute("INSERT INTO comandos(tipo, params) VALUES(%s, %s::jsonb) RETURNING id",
@@ -208,7 +224,7 @@ def enfileirar(tipo, params):
 
 def cmd(cid):
     """Situação de um comando: (status, resultado)."""
-    con=_conn()
+    con=_conn_rw()
     try:
         with con.cursor() as c:
             c.execute("SELECT status, resultado FROM comandos WHERE id=%s", (cid,))
@@ -218,17 +234,25 @@ def cmd(cid):
         con.close()
 
 def esperar(cid, segundos=240, msg="Mandando para o Mac…"):
-    """Aguarda o Mac executar. Devolve (status, resultado)."""
+    """Aguarda o Mac executar. Uma conexão só, consultando de 2 em 2 segundos."""
     import time
     barra=st.progress(0.0, text=msg)
-    for i in range(segundos):
-        stt, res = cmd(cid)
-        if stt in ("ok","erro"):
-            barra.empty(); return stt, res
-        barra.progress(min(0.97,(i+1)/segundos),
-                       text=f'{msg} ({stt} · {i+1}s)' if stt!="pendente"
-                            else f'Na fila do Mac… ({i+1}s)')
-        time.sleep(1)
+    con=_conn_rw()
+    try:
+        for i in range(0, segundos, 2):
+            con.rollback()                      # enxerga o que o worker acabou de gravar
+            with con.cursor() as c:
+                c.execute("SELECT status, resultado FROM comandos WHERE id=%s", (cid,))
+                r=c.fetchone()
+            stt, res = (r[0], r[1]) if r else ("sumiu", None)
+            if stt in ("ok","erro","sumiu"):
+                barra.empty(); return stt, res
+            barra.progress(min(0.97, i/segundos),
+                           text=f'{msg} ({i}s)' if stt=="executando"
+                                else f'Na fila do Mac… ({i}s)')
+            time.sleep(2)
+    finally:
+        con.close()
     barra.empty()
     return "esperando", None
 
@@ -619,7 +643,7 @@ elif page.startswith("🎯"):
     else:
         st.info("Nenhuma prova futura registrada.")
 
-else:
+elif page.startswith("🚨"):
     hero("Treinos Perdidos", "Planejado e não realizado", "Acompanhamento")
     dias=[hoje-dt.timedelta(days=i) for i in range(1,15)]
     dsel=st.selectbox("Dia", dias, format_func=lambda x: f'{WD[x.weekday()]} {x.strftime("%d/%m")}')
@@ -840,17 +864,22 @@ def page_acoes(mes):
     if not len(h):
         st.caption("Nada pedido ainda."); return
     ICO={"ok":"✅","erro":"❌","executando":"⏳","pendente":"🕐"}
+    NOME={"coletar":"atualizar do TrainingPeaks","pdfs_mes":"gerar PDFs do mês",
+          "sync":"sincronizar","perfil":"ler atleta","bloco_previa":"prévia de bloco",
+          "bloco_publicar":"publicar treinos","email":"enviar e-mails"}
     for _,r in h.iterrows():
         txt=(r["resultado"] or "")
-        if r["tipo"]=="bloco_previa" and r["status"]=="ok": txt="prévia gerada"
+        if r["status"]=="ok":      # respostas em JSON não interessam em texto cru
+            if r["tipo"]=="bloco_previa": txt="prévia gerada"
+            elif r["tipo"]=="perfil": txt="atleta lido no TrainingPeaks"
         st.markdown(f'<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)">'
-                    f'{ICO.get(r["status"],"·")} <b>{r["tipo"]}</b> '
+                    f'{ICO.get(r["status"],"·")} <b>{NOME.get(r["tipo"], r["tipo"])}</b> '
                     f'<span style="color:#8fa6ad">· {r["quando"]}</span><br>'
                     f'<span style="color:#8fa6ad;font-size:.82rem">{txt[:220]}</span></div>',
                     unsafe_allow_html=True)
 
-if page=="🏋️ Montar treino": page_montar()
-elif page=="⚙️ Ações": page_acoes(mes)
+if page.startswith("🏋️"): page_montar()
+elif page.startswith("⚙️"): page_acoes(mes)
 
 import streamlit.components.v1 as _cc
 _cc.html('''<div style="text-align:right;font-family:Avenir Next,system-ui;padding:6px 0">
