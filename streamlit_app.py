@@ -109,7 +109,8 @@ def _instala_pwa():
     _c.html(f"""<script>
 (function() {{
   try {{
-    var d = window.parent.document;
+    var W = window.top || window.parent;
+    var d = W.document;
     if (d.getElementById('aslab-pwa')) return;
     var mark = d.createElement('meta'); mark.id='aslab-pwa'; d.head.appendChild(mark);
     function meta(n, c, prop) {{
@@ -131,8 +132,8 @@ def _instala_pwa():
     meta('theme-color', '#0a2026');
     d.title = 'AS Endurance LAB';
     // guarda o evento de instalação (Android/desktop) p/ o botão "Instalar"
-    window.parent.addEventListener('beforeinstallprompt', function(e) {{
-      e.preventDefault(); window.parent.__aslabInstall = e;
+    W.addEventListener('beforeinstallprompt', function(e) {{
+      e.preventDefault(); W.__aslabInstall = e;
     }});
   }} catch (e) {{}}
 }})();
@@ -597,7 +598,7 @@ _cc.html('''<div style="text-align:right;font-family:Avenir Next,system-ui;paddi
     📲 Instalar app</button></div>
 <script>
  var b=document.getElementById('ib');
- var ev=window.parent.__aslabInstall;
+ var ev=(window.top||window.parent).__aslabInstall;
  if (ev) {{ b.style.display='inline-block'; b.onclick=function(){{ ev.prompt(); }}; }}
 </script>''', height=44)
 
