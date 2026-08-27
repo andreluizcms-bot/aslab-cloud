@@ -178,15 +178,26 @@ def _tok(pw):
     import hashlib
     return hashlib.sha256(("aslab|"+pw).encode()).hexdigest()[:20]
 
+def _lembrar(tok):
+    """Grava a chave num cookie de 1 ano — o próximo acesso entra sozinho."""
+    import streamlit.components.v1 as _c
+    _c.html(f"""<script>
+      try {{
+        var W=window.top||window.parent;
+        var sec=(W.location.protocol==='https:')?'; Secure':'';
+        W.document.cookie='aslab_k={tok}; max-age=31536000; path=/; SameSite=Lax'+sec;
+      }} catch(e) {{}}
+    </script>""", height=0)
+
 def _gate():
     pw=_sec("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
     if not pw: return True
     tok=_tok(pw)
-    if st.query_params.get("k")==tok:
+    try: cookie_ok = st.context.cookies.get("aslab_k")==tok
+    except Exception: cookie_ok = False
+    if cookie_ok or st.query_params.get("k")==tok or st.session_state.get("auth_ok"):
         st.session_state["auth_ok"]=True
-        return True
-    if st.session_state.get("auth_ok"):
-        st.query_params["k"]=tok
+        _lembrar(tok)          # renova o cookie a cada visita
         return True
     st.markdown(f'<div class="logo" style="margin:8vh auto 20px;width:180px">{LOGO}</div>', unsafe_allow_html=True)
     c=st.columns([1,1.2,1])[1]
@@ -195,7 +206,6 @@ def _gate():
         if st.button("Entrar", type="primary", use_container_width=True):
             if p==pw:
                 st.session_state["auth_ok"]=True
-                st.query_params["k"]=_tok(pw)
                 st.rerun()
             else: st.error("Senha incorreta.")
     return False
