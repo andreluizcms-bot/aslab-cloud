@@ -762,6 +762,7 @@ def page_montar():
     threshold_ms=None
     if not perfil:
         st.info("Carregue o atleta primeiro — é dele que vêm as zonas e a base do bloco.")
+        secao_forca_biblioteca(aid, nome)   # força não depende das zonas
         return
     if perfil.get("ancora_pace"):
         st.caption(f'Zonas do TrainingPeaks · limiar {perfil["ancora_pace"]}/km')
@@ -844,7 +845,9 @@ def page_montar():
         else: st.warning("Ainda rodando. Abra de novo daqui a pouco — o pedido não se perde.")
 
     pv=st.session_state.get("mt_previa")
-    if not pv or pv["aid"]!=aid: return
+    if not pv or pv["aid"]!=aid:
+        secao_forca_biblioteca(aid, nome)
+        return
     d=pv["d"]; sess=d.get("sessoes") or []
     sect(f'Prévia · {len(sess)} sessões · {d.get("total_km")} km')
     if d.get("plano_aplicado"): st.caption("Volume ditado pela periodização do Lab. ✅")
@@ -892,6 +895,34 @@ def page_montar():
             st.success(res); st.session_state.pop("mt_previa", None); q.clear()
         elif stt=="erro": st.error(res)
         else: st.info("Continua rodando no Mac. Confira em ⚙️ Ações.")
+    secao_forca_biblioteca(aid, nome)
+
+def secao_forca_biblioteca(aid, nome):
+    """Publica um treino de força das bibliotecas do treinador em qualquer data."""
+    sect("Força da biblioteca")
+    st.caption("Seus treinos prontos das bibliotecas do TP — publica direto no dia escolhido.")
+    bib=st.session_state.get("forca_bib")
+    if not bib:
+        if st.button("Carregar bibliotecas de força", use_container_width=True):
+            cid=enfileirar("forca_bib", {})
+            stt,res=esperar(cid, 240, "Buscando suas bibliotecas no Mac…")
+            if stt=="ok":
+                st.session_state["forca_bib"]=json.loads(res); st.rerun()
+            else: st.error(res or "O Mac não respondeu — precisa estar ligado.")
+        return
+    rotulos={f'[{i["biblioteca"]}] {i["titulo"]}': i for i in bib}
+    c=st.columns([3,1.4,1.6], vertical_alignment="bottom")
+    esc=c[0].selectbox("Treino", list(rotulos), key="fb_treino")
+    data=c[1].date_input("Dia", dt.date.today()+dt.timedelta(days=1),
+                         format="DD/MM/YYYY", key="fb_data")
+    if c[2].button("Publicar (oculto)", type="primary", use_container_width=True):
+        it=rotulos[esc]
+        cid=enfileirar("forca_publicar", {"athlete_id": aid, "atleta_nome": nome,
+            "chave": it["chave"], "titulo": it["titulo"], "data": data.isoformat()})
+        stt,res=esperar(cid, 240, "Publicando no TrainingPeaks…")
+        if stt=="ok": st.success(res)
+        elif stt=="erro": st.error(res)
+        else: st.info("Segue rodando no Mac — confira em ⚙️ Ações.")
 
 # ---------- ações remotas ----------
 def page_acoes(mes):
@@ -924,11 +955,13 @@ def page_acoes(mes):
     ICO={"ok":"✅","erro":"❌","executando":"⏳","pendente":"🕐"}
     NOME={"coletar":"atualizar do TrainingPeaks","pdfs_mes":"gerar PDFs do mês",
           "sync":"sincronizar","perfil":"ler atleta","bloco_previa":"prévia de bloco",
+          "forca_bib":"bibliotecas de força","forca_publicar":"publicar força",
           "bloco_publicar":"publicar treinos","email":"enviar e-mails"}
     for _,r in h.iterrows():
         txt="" if pd.isna(r["resultado"]) else str(r["resultado"])
         if r["status"]=="ok":      # respostas em JSON não interessam em texto cru
             if r["tipo"]=="bloco_previa": txt="prévia gerada"
+            elif r["tipo"]=="forca_bib": txt="bibliotecas carregadas"
             elif r["tipo"]=="perfil": txt="atleta lido no TrainingPeaks"
         st.markdown(f'<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)">'
                     f'{ICO.get(r["status"],"·")} <b>{NOME.get(r["tipo"], r["tipo"])}</b> '
