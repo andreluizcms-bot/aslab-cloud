@@ -717,12 +717,16 @@ elif page.startswith("🚨"):
 
 
 # ---------- montar treino (a nuvem enfileira, o Mac publica no TP) ----------
-TIPOS=[("","— folga —"),("limiar","Limiar"),("limiar_prefadiga","Limiar c/ pré-fadiga"),
+TIPOS=[("","— folga —"),("limiar","Limiar (sem pré-fadiga)"),("limiar_prefadiga","Limiar c/ pré-fadiga"),
        ("escada_limiar","Escada de limiar"),("segundo_limiar","Segundo limiar"),
        ("limiar_vo2","Limiar + VO2"),("vo2max","VO2max"),("ritmo_prova","Ritmo de prova"),
        ("over_under","Over/Under"),("piramide","Pirâmide"),("fartlek","Fartlek"),
        ("longo","Longo"),("longo_continuo","Longo contínuo"),("longo_trocas","Longo com trocas"),
-       ("longo_bloco","Longo em bloco"),("progressivo","Progressivo"),("rodagem","Rodagem"),
+       ("longo_bloco","Longo em bloco"),("progressivo","Progressivo"),
+       ("rodagem","Rodagem (varia strides)"),("rodagem_strides","Rodagem c/ strides"),
+       ("rodagem_leve","Rodagem sem strides"),
+       ("bike_rodagem","🚴 Bike giro Z2"),("bike_intervalado","🚴 Bike intervalado"),
+       ("bike_longa","🚴 Bike longa"),
        ("corre_anda","Corre e anda"),("forca","Força (academia)")]
 TIPO_LABEL={v:t for v,t in TIPOS}
 DIAS_PT=["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"]
