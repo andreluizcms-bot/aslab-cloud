@@ -605,6 +605,14 @@ def hrv_card(nome, foto, r):
 
 def page_hrv():
     hero("HRV da Equipe", "Variabilidade da frequência cardíaca de todos os atletas com métricas no TrainingPeaks", "Recuperação")
+    b=st.columns([1.6,4.4], vertical_alignment="center")
+    if b[0].button("🔄 Atualizar HRV de hoje", key="hrv_refresh"):
+        cid=enfileirar("hrv_refresh", {"days": 10})
+        stt,res=esperar(cid, 300, "Puxando as métricas de hoje no TrainingPeaks…")
+        if stt=="ok": st.success(str(res).strip().splitlines()[-2] if res else "Atualizado."); q.clear(); st.rerun()
+        elif stt=="erro": st.error(res)
+        else: st.info("Segue rodando no Mac — recarregue em instantes.")
+    b[1].caption("HRV, FC de repouso e sono dos últimos 10 dias, incluindo hoje (o Mac precisa estar ligado).")
     df=q("""SELECT m.atleta_id aid, a.nome, a.foto, m.date, m.hrv, m.fc_rep, m.sono_h
             FROM metricas_diarias m LEFT JOIN atletas a ON a.id=m.atleta_id
             WHERE m.date>=%s AND m.date<=%s ORDER BY m.date""",
@@ -1107,7 +1115,7 @@ def page_acoes(mes):
     NOME={"coletar":"atualizar do TrainingPeaks","pdfs_mes":"gerar PDFs do mês",
           "sync":"sincronizar","perfil":"ler atleta","bloco_previa":"prévia de bloco",
           "forca_bib":"bibliotecas de força","forca_publicar":"publicar força",
-          "bloco_publicar":"publicar treinos","email":"enviar e-mails"}
+          "bloco_publicar":"publicar treinos","email":"enviar e-mails","hrv_refresh":"atualizar HRV"}
     for _,r in h.iterrows():
         txt="" if pd.isna(r["resultado"]) else str(r["resultado"])
         if r["status"]=="ok":      # respostas em JSON não interessam em texto cru
