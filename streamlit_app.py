@@ -98,7 +98,11 @@ table.tbl td.num,table.tbl th.num{text-align:right}
 .hrvc .kp b{display:block;font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:1.45rem;line-height:1;color:$text;font-variant-numeric:tabular-nums}
 .hrvc .kp small{display:block;font-size:10px;color:$mut;margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
 .hrvc .lg{font-size:10.5px;color:$mut;margin-top:2px}
-.hrvc svg.ch{width:100%;height:auto;display:block}
+.hrvc svg.ch{width:100%;height:auto;display:block;overflow:visible}
+.hrvc svg .tip{display:none;pointer-events:none}.hrvc svg .pt:hover .tip{display:block}
+.hrvc svg .pt:hover circle:first-child{r:4}
+.hrvc svg .tip rect{fill:$text;opacity:.96}.hrvc svg .tip text{font:500 8.5px ui-monospace,Menlo,monospace;fill:$card}
+.hrvc svg text.ax{font:500 8px ui-monospace,Menlo,monospace}
 .hrvc .pr{display:flex;gap:3px}
 .hrvc .pr i{flex:1;height:12px;border-radius:3px;display:block}
 .hrvc .msg{font-size:.8rem;color:$text;line-height:1.35;margin-top:2px}
@@ -547,8 +551,14 @@ def hrv_resumo(g, hoje):
                 s30=s30, v30=[por_dia.get(d) for d in dias30], s14=s30[-14:],
                 abaixo30=abaixo30, abaixo7=abaixo7, alerta=alerta, fc7=fc7, so7=so7, n=len(h))
 
-def hrv_chart_svg(r):
-    W,H=320,84; padl,padr,padt,padb=6,6,8,10
+def hrv_fmt(v):
+    """Valor como o TP mostra: inteiro sem decimal, senão 1 casa."""
+    return f"{v:.0f}" if abs(v-round(v))<1e-9 else f"{v:.1f}"
+
+def hrv_chart_svg(r, hoje):
+    """Linha dos últimos 30 dias: cada ponto é o valor medido no TP (tooltip com data e valor),
+    baseline e limiar tracejados com o valor na ponta."""
+    W,H=320,84; padl,padr,padt,padb=6,34,10,10
     vals=[v for v in r["v30"] if v is not None]
     lo=min(vals+[r["limiar"]]); hi=max(vals+[r["base"]])
     if hi-lo<4: hi+=2; lo-=2
@@ -556,16 +566,26 @@ def hrv_chart_svg(r):
     def X(i): return padl+i*(W-padl-padr)/29
     def Y(v): return padt+(hi-v)*(H-padt-padb)/span
     cor={"verm":HRV_VERM,"amar":HRV_AMAR,"verd":HRV_VERD}
-    path=""; prev=None
-    for i,v in enumerate(r["v30"]):
+    dias=[hoje-dt.timedelta(days=i) for i in range(29,-1,-1)]
+    path=""; prev=None; pts=""
+    for i,(v,s_) in enumerate(zip(r["v30"],r["s30"])):
         if v is None: prev=None; continue
-        path+=("L" if prev is not None else " M")+f"{X(i):.1f},{Y(v):.1f}"; prev=v
-    dots="".join(f'<circle cx="{X(i):.1f}" cy="{Y(v):.1f}" r="2.6" fill="{cor[s_]}"/>'
-                 for i,(v,s_) in enumerate(zip(r["v30"],r["s30"])) if v is not None)
+        x,y=X(i),Y(v)
+        path+=("L" if prev is not None else " M")+f"{x:.1f},{y:.1f}"; prev=v
+        lab=f'{dias[i].strftime("%d/%m")} · {hrv_fmt(v)} ms'
+        tw=len(lab)*5.4+8; tx=min(max(x, tw/2+1), W-tw/2-1)
+        rect_y=y-21 if y>24 else y+8
+        pts+=(f'<g class="pt"><circle cx="{x:.1f}" cy="{y:.1f}" r="2.6" fill="{cor[s_]}"/>'
+              f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="transparent"/>'
+              f'<g class="tip"><rect x="{tx-tw/2:.1f}" y="{rect_y:.1f}" width="{tw:.1f}" height="12" rx="3"/>'
+              f'<text x="{tx:.1f}" y="{(rect_y+9):.1f}" text-anchor="middle">{lab}</text></g></g>')
+    yb,yl=Y(r["base"]),Y(r["limiar"])
     return (f'<svg class="ch" viewBox="0 0 {W} {H}" aria-hidden="true">'
-            f'<line x1="{padl}" x2="{W-padr}" y1="{Y(r["base"]):.1f}" y2="{Y(r["base"]):.1f}" stroke="{HRV_VERD}" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>'
-            f'<line x1="{padl}" x2="{W-padr}" y1="{Y(r["limiar"]):.1f}" y2="{Y(r["limiar"]):.1f}" stroke="{HRV_VERM}" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>'
-            f'<path d="{path}" fill="none" stroke="{P["mut"]}" stroke-width="1.4" opacity=".8"/>{dots}</svg>')
+            f'<line x1="{padl}" x2="{W-padr}" y1="{yb:.1f}" y2="{yb:.1f}" stroke="{HRV_VERD}" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>'
+            f'<text class="ax" x="{W-padr+3}" y="{yb+3:.1f}" fill="{HRV_VERD}">{r["base"]:.1f}</text>'
+            f'<line x1="{padl}" x2="{W-padr}" y1="{yl:.1f}" y2="{yl:.1f}" stroke="{HRV_VERM}" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>'
+            f'<text class="ax" x="{W-padr+3}" y="{yl+3:.1f}" fill="{HRV_VERM}">{r["limiar"]:.1f}</text>'
+            f'<path d="{path}" fill="none" stroke="{P["mut"]}" stroke-width="1.4" opacity=".8"/>{pts}</svg>')
 
 def hrv_card(nome, foto, r):
     import html as _h
@@ -574,7 +594,9 @@ def hrv_card(nome, foto, r):
          f'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
          f'<div class="mono" style="display:none">{ini}</div>' if foto else f'<div class="mono">{ini}</div>')
     cor={"verm":HRV_VERM,"amar":HRV_AMAR,"verd":HRV_VERD,None:P["grid"]}
-    pr="".join(f'<i style="background:{cor[x]}"></i>' for x in r["s14"])
+    _d14=[dt.date.today()-dt.timedelta(days=i) for i in range(13,-1,-1)]
+    pr="".join(f'<i style="background:{cor[x]}" title="{d.strftime("%d/%m")} · {hrv_fmt(v)+" ms" if v is not None else "sem medição"}"></i>'
+               for d,x,v in zip(_d14, r["s14"], r["v30"][-14:]))
     dias_sem=(dt.date.today()-r["data"]).days
     upd=f'Última atualização: {r["data"].strftime("%d/%m/%Y")}'+(f' · há {dias_sem}d' if dias_sem>1 else '')
     if r["alerta"]: tag='<span class="tag alerta">Alerta</span>'
@@ -594,12 +616,12 @@ def hrv_card(nome, foto, r):
     cd={"verd":HRV_VERD,"amar":HRV_AMAR,"verm":HRV_VERM}.get(st_, P["mut"])
     return (f'<div class="hrvc{" alerta" if r["alerta"] else ""}">'
             f'<div class="top">{avh}<div><div class="nm">{_h.escape(nome)}</div><div class="upd">{upd}</div></div>{tag}</div>'
-            f'<div class="kp"><div><b style="color:{cd}">{r["dia"]:.1f}<span style="font-size:.8rem"> ms</span></b><small>Dia</small></div>'
+            f'<div class="kp"><div><b style="color:{cd}">{hrv_fmt(r["dia"])}<span style="font-size:.8rem"> ms</span></b><small>Dia · {r["data"].strftime("%d/%m")}</small></div>'
             f'<div><b>{r["limiar"]:.1f}<span style="font-size:.8rem"> ms</span></b><small>Limiar</small></div>'
             f'<div><b>{r["base"]:.1f}<span style="font-size:.8rem"> ms</span></b><small>Baseline</small></div>'
             f'<div><b style="color:{HRV_AMAR if r["cv"]>=15 else P["text"]}">{r["cv"]:.1f}%</b><small>CV do HRV</small></div></div>'
             f'<div class="lg">HRV · últimos 30 dias · vermelho abaixo do limiar · amarelo até o baseline · verde dentro do baseline</div>'
-            f'{hrv_chart_svg(r)}'
+            f'{hrv_chart_svg(r, dt.date.today())}'
             f'<div class="lg">Prontidão · últimos 14 dias</div><div class="pr">{pr}</div>'
             f'<div class="msg">{msg}</div>{auxh}</div>')
 
