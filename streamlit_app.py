@@ -83,6 +83,26 @@ table.tbl td.num,table.tbl th.num{text-align:right}
 .ringlab{font-size:.6rem;color:$mut;text-transform:uppercase;letter-spacing:.1em;font-weight:700}
 .ringval{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:1.5rem;line-height:1.1}
 .logo svg{display:block}
+.hrvg{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin:4px 0 8px}
+.hrvc{background:$card;border:1px solid $gbrd;border-radius:14px;padding:14px 16px 12px;display:flex;flex-direction:column;gap:8px}
+.hrvc.alerta{border-color:rgba(207,74,90,.55)}
+.hrvc .top{display:flex;align-items:center;gap:10px}
+.hrvc .top img,.hrvc .top .mono{width:34px;height:34px;border-radius:50%;object-fit:cover;flex:none;border:2px solid #f2a541}
+.hrvc .top .mono{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#f2a541,#ee8c3d);color:#0e2a33;font-size:.85rem;font-weight:800}
+.hrvc .nm{font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:1.35rem;line-height:1;letter-spacing:.02em;color:$text}
+.hrvc .upd{font-size:11px;color:$mut;margin-top:3px}
+.hrvc .tag{margin-left:auto;font-size:11px;font-weight:600;padding:3px 8px;border-radius:999px;border:1px solid $gbrd;color:$mut;white-space:nowrap}
+.hrvc .tag.alerta{color:#cf4a5a;border-color:rgba(207,74,90,.5)}
+.hrvc .tag.ok{color:#37b87f;border-color:rgba(55,184,127,.45)}
+.hrvc .kp{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.hrvc .kp b{display:block;font-family:"Barlow Condensed",sans-serif;font-weight:700;font-size:1.45rem;line-height:1;color:$text;font-variant-numeric:tabular-nums}
+.hrvc .kp small{display:block;font-size:10px;color:$mut;margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+.hrvc .lg{font-size:10.5px;color:$mut;margin-top:2px}
+.hrvc svg.ch{width:100%;height:auto;display:block}
+.hrvc .pr{display:flex;gap:3px}
+.hrvc .pr i{flex:1;height:12px;border-radius:3px;display:block}
+.hrvc .msg{font-size:.8rem;color:$text;line-height:1.35;margin-top:2px}
+.hrvc .aux{font-size:11px;color:$mut}
 """)
 st.markdown("<style>"+_CSS.substitute(P)+"</style>", unsafe_allow_html=True)
 def hero(t, sub="", kick=""):
@@ -307,7 +327,7 @@ def _ay():
 # ---------- header ----------
 hd=st.columns([1.5,4.5], vertical_alignment="center")
 hd[0].markdown(f'<div class="logo">{LOGO}</div>', unsafe_allow_html=True)
-page=hd[1].radio("Seção", ["👥 Equipe","🧑‍💼 Atleta","🏆 Liga","🧭 Periodização","🎯 Provas",
+page=hd[1].radio("Seção", ["👥 Equipe","🧑‍💼 Atleta","🫀 HRV","🏆 Liga","🧭 Periodização","🎯 Provas",
                            "🚨 Perdidos","🏋️ Montar treino","⚙️ Ações"],
                  horizontal=True, label_visibility="collapsed")
 
@@ -496,6 +516,133 @@ def page_liga_cloud(mes):
         st.caption("**Força:** Disciplina 50% · "+cnome.replace("📅 ","")+" 50%.")
     else:
         st.caption("**Geral:** Disciplina 35% · "+cnome.replace("📅 ","")+" 25% · Evolução 25% · Ritmo 15%.")
+
+
+# ---------- HRV da equipe ----------
+HRV_VERM="#cf4a5a"; HRV_AMAR="#f2a541"; HRV_VERD="#37b87f"
+
+def hrv_resumo(g, hoje):
+    """Baseline/limiar/CV de um atleta a partir da série dos últimos 60 dias."""
+    h=g.dropna(subset=["hrv"]).copy()
+    if len(h)<5: return None
+    h["d"]=pd.to_datetime(h["date"]).dt.date
+    jan=h[h["d"]>=hoje-dt.timedelta(days=30)]
+    base_src=jan if len(jan)>=7 else h
+    base=float(base_src["hrv"].mean()); sd=float(base_src["hrv"].std(ddof=0)) if len(base_src)>2 else 0.0
+    limiar=max(0.0, base-sd); cv=(sd/base*100) if base else 0.0
+    ult=h.iloc[-1]
+    def status(v):
+        if v is None or pd.isna(v): return None
+        return "verm" if v<limiar else ("amar" if v<base else "verd")
+    por_dia={r.d:float(r.hrv) for r in h.itertuples()}
+    dias30=[hoje-dt.timedelta(days=i) for i in range(29,-1,-1)]
+    s30=[status(por_dia.get(d)) for d in dias30]
+    abaixo30=sum(1 for x in s30 if x=="verm"); abaixo7=sum(1 for x in s30[-7:] if x=="verm")
+    v7=[por_dia[d] for d in dias30[-7:] if d in por_dia]
+    m7=sum(v7)/len(v7) if v7 else None
+    alerta=(abaixo7>=2) or (m7 is not None and m7<limiar)
+    fc7=g.dropna(subset=["fc_rep"]).tail(7)["fc_rep"].mean() if g["fc_rep"].notna().any() else None
+    so7=g.dropna(subset=["sono_h"]).tail(7)["sono_h"].mean() if g["sono_h"].notna().any() else None
+    return dict(dia=float(ult["hrv"]), data=ult["d"], base=base, sd=sd, limiar=limiar, cv=cv, m7=m7,
+                s30=s30, v30=[por_dia.get(d) for d in dias30], s14=s30[-14:],
+                abaixo30=abaixo30, abaixo7=abaixo7, alerta=alerta, fc7=fc7, so7=so7, n=len(h))
+
+def hrv_chart_svg(r):
+    W,H=320,84; padl,padr,padt,padb=6,6,8,10
+    vals=[v for v in r["v30"] if v is not None]
+    lo=min(vals+[r["limiar"]]); hi=max(vals+[r["base"]])
+    if hi-lo<4: hi+=2; lo-=2
+    span=hi-lo or 1
+    def X(i): return padl+i*(W-padl-padr)/29
+    def Y(v): return padt+(hi-v)*(H-padt-padb)/span
+    cor={"verm":HRV_VERM,"amar":HRV_AMAR,"verd":HRV_VERD}
+    path=""; prev=None
+    for i,v in enumerate(r["v30"]):
+        if v is None: prev=None; continue
+        path+=("L" if prev is not None else " M")+f"{X(i):.1f},{Y(v):.1f}"; prev=v
+    dots="".join(f'<circle cx="{X(i):.1f}" cy="{Y(v):.1f}" r="2.6" fill="{cor[s_]}"/>'
+                 for i,(v,s_) in enumerate(zip(r["v30"],r["s30"])) if v is not None)
+    return (f'<svg class="ch" viewBox="0 0 {W} {H}" aria-hidden="true">'
+            f'<line x1="{padl}" x2="{W-padr}" y1="{Y(r["base"]):.1f}" y2="{Y(r["base"]):.1f}" stroke="{HRV_VERD}" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>'
+            f'<line x1="{padl}" x2="{W-padr}" y1="{Y(r["limiar"]):.1f}" y2="{Y(r["limiar"]):.1f}" stroke="{HRV_VERM}" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>'
+            f'<path d="{path}" fill="none" stroke="{P["mut"]}" stroke-width="1.4" opacity=".8"/>{dots}</svg>')
+
+def hrv_card(nome, foto, r):
+    import html as _h
+    ini="".join(w[0] for w in nome.split()[:2]).upper() or "?"
+    avh=(f'<img src="{_h.escape(foto)}" alt="" loading="lazy" '
+         f'onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
+         f'<div class="mono" style="display:none">{ini}</div>' if foto else f'<div class="mono">{ini}</div>')
+    cor={"verm":HRV_VERM,"amar":HRV_AMAR,"verd":HRV_VERD,None:P["grid"]}
+    pr="".join(f'<i style="background:{cor[x]}"></i>' for x in r["s14"])
+    dias_sem=(dt.date.today()-r["data"]).days
+    upd=f'Última atualização: {r["data"].strftime("%d/%m/%Y")}'+(f' · há {dias_sem}d' if dias_sem>1 else '')
+    if r["alerta"]: tag='<span class="tag alerta">Alerta</span>'
+    elif r["abaixo30"]==0: tag='<span class="tag ok">Estável</span>'
+    else: tag='<span class="tag">Monitorar</span>'
+    n=r["abaixo30"]
+    if n==0: msg="<b>Nenhum dia</b> abaixo do limiar nos últimos 30 dias — HRV estável."
+    elif r["alerta"]: msg=f"<b>{n} de 30</b> dias abaixo do limiar, <b>{r['abaixo7']}</b> na última semana — conferir carga, sono e sinais de fadiga."
+    elif n<=2: msg=f"<b>{n} de 30</b> dias abaixo do limiar nos últimos 30 dias — monitorar evolução."
+    elif n<=5: msg=f"<b>{n} de 30</b> dias abaixo do limiar nos últimos 30 dias — padrão intermitente, acompanhar de perto."
+    else: msg=f"<b>{n} de 30</b> dias abaixo do limiar nos últimos 30 dias — padrão recorrente, revisar o bloco."
+    aux=[]
+    if r["fc7"] is not None: aux.append(f'FC repouso {r["fc7"]:.0f} bpm')
+    if r["so7"] is not None: aux.append(f'sono {r["so7"]:.1f} h')
+    auxh=f'<div class="aux">Média 7d · {" · ".join(aux)}</div>' if aux else ""
+    st_=r["s30"][-1]
+    cd={"verd":HRV_VERD,"amar":HRV_AMAR,"verm":HRV_VERM}.get(st_, P["mut"])
+    return (f'<div class="hrvc{" alerta" if r["alerta"] else ""}">'
+            f'<div class="top">{avh}<div><div class="nm">{_h.escape(nome)}</div><div class="upd">{upd}</div></div>{tag}</div>'
+            f'<div class="kp"><div><b style="color:{cd}">{r["dia"]:.1f}<span style="font-size:.8rem"> ms</span></b><small>Dia</small></div>'
+            f'<div><b>{r["limiar"]:.1f}<span style="font-size:.8rem"> ms</span></b><small>Limiar</small></div>'
+            f'<div><b>{r["base"]:.1f}<span style="font-size:.8rem"> ms</span></b><small>Baseline</small></div>'
+            f'<div><b style="color:{HRV_AMAR if r["cv"]>=15 else P["text"]}">{r["cv"]:.1f}%</b><small>CV do HRV</small></div></div>'
+            f'<div class="lg">HRV · últimos 30 dias · vermelho abaixo do limiar · amarelo até o baseline · verde dentro do baseline</div>'
+            f'{hrv_chart_svg(r)}'
+            f'<div class="lg">Prontidão · últimos 14 dias</div><div class="pr">{pr}</div>'
+            f'<div class="msg">{msg}</div>{auxh}</div>')
+
+def page_hrv():
+    hero("HRV da Equipe", "Variabilidade da frequência cardíaca de todos os atletas com métricas no TrainingPeaks", "Recuperação")
+    df=q("""SELECT m.atleta_id aid, a.nome, a.foto, m.date, m.hrv, m.fc_rep, m.sono_h
+            FROM metricas_diarias m LEFT JOIN atletas a ON a.id=m.atleta_id
+            WHERE m.date>=%s AND m.date<=%s ORDER BY m.date""",
+         ((hoje-dt.timedelta(days=60)).isoformat(), hoje.isoformat()))
+    if df.empty or df["hrv"].notna().sum()==0:
+        st.info("Nenhuma métrica de HRV sincronizada ainda — rode **Atualizar do TrainingPeaks** em Ações."); return
+    res=[]; antigos=[]
+    for aid,g in df.groupby("aid", sort=False):
+        nome=(g["nome"].dropna().iloc[0] if g["nome"].notna().any() else str(aid))
+        foto=(g["foto"].dropna().iloc[0] if g["foto"].notna().any() else "")
+        r=hrv_resumo(g, hoje)
+        if r is None:
+            if g["hrv"].notna().any(): antigos.append((nome, int(g["hrv"].notna().sum())))
+            continue
+        if (hoje-r["data"]).days>14: antigos.append((nome, r["n"])); continue
+        res.append((nome, foto, r))
+    n_alerta=sum(1 for _,_,r in res if r["alerta"]); n_hoje=sum(1 for _,_,r in res if (hoje-r["data"]).days<=1)
+    cv_med=(sum(r["cv"] for _,_,r in res)/len(res)) if res else 0
+    c=st.columns(4)
+    c[0].metric("Atletas monitorados", len(res)); c[1].metric("Atualizados 24h", n_hoje)
+    c[2].metric("Em alerta", n_alerta); c[3].metric("CV médio do HRV", f"{cv_med:.1f}%")
+    f=st.columns([2.2,1.6,1.2], vertical_alignment="bottom")
+    busca=f[0].text_input("Buscar atleta", "", key="hrv_busca").strip().lower()
+    ordem=f[1].selectbox("Ordenar por", ["Alerta primeiro","Dias abaixo do limiar","Nome","Última atualização"], key="hrv_ordem")
+    so_alerta=f[2].checkbox("Só em alerta", key="hrv_so_alerta")
+    itens=[x for x in res if (not busca or busca in x[0].lower()) and (not so_alerta or x[2]["alerta"])]
+    if ordem=="Nome": itens.sort(key=lambda x: x[0].lower())
+    elif ordem=="Dias abaixo do limiar": itens.sort(key=lambda x: (-x[2]["abaixo30"], -x[2]["abaixo7"], x[0].lower()))
+    elif ordem=="Última atualização": itens.sort(key=lambda x: (-x[2]["data"].toordinal(), x[0].lower()))
+    else: itens.sort(key=lambda x: (not x[2]["alerta"], -x[2]["abaixo7"], -x[2]["abaixo30"], x[0].lower()))
+    if not itens: st.caption("Nenhum atleta bate com esse filtro."); return
+    st.markdown('<div class="hrvg">'+"".join(hrv_card(n,f_,r) for n,f_,r in itens)+'</div>', unsafe_allow_html=True)
+    st.caption("Baseline = média dos últimos 30 dias · limiar = baseline − 1 desvio-padrão · CV = desvio/baseline. "
+               "Alerta = 2+ dias abaixo do limiar na última semana ou média 7d abaixo do limiar. "
+               "Dados das métricas diárias do TrainingPeaks, sincronizados pelo Mac.")
+    if antigos:
+        with st.expander(f"Sem HRV recente · {len(antigos)} atleta(s)"):
+            html_table(pd.DataFrame([{"Atleta":n,"Dias com HRV (60d)":k} for n,k in sorted(antigos, key=lambda x:(-x[1],x[0].lower()))]), num={"Dias com HRV (60d)"})
 
 if page.startswith("👥"):
     hero("Visão da Equipe", f"{mlabel(mes)} · dados da última sincronização", "Equipe")
@@ -973,7 +1120,8 @@ def page_acoes(mes):
                     f'<span style="color:#8fa6ad;font-size:.82rem">{txt[:220]}</span></div>',
                     unsafe_allow_html=True)
 
-if page.startswith("🏋️"): page_montar()
+if page.startswith("🫀"): page_hrv()
+elif page.startswith("🏋️"): page_montar()
 elif page.startswith("⚙️"): page_acoes(mes)
 
 import streamlit.components.v1 as _cc
