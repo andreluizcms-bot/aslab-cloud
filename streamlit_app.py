@@ -938,7 +938,12 @@ def page_montar():
         else: st.error(res or "O Mac não respondeu — ele precisa estar ligado.")
 
     perfil=st.session_state.get("mt_perfil") or {}
-    if perfil.get("aid")!=aid: perfil={}
+    if perfil.get("aid")!=aid:
+        perfil={}
+        if st.session_state.get("mt_previa"):           # prévia do atleta anterior sai da tela
+            st.session_state.pop("mt_previa", None)
+        for k in [k for k in st.session_state if k.startswith(("mt_fase_","mt_forca_","mt_s_"))]:
+            st.session_state.pop(k, None)
     base_sug=perfil.get("base_sugerida") or {}
     threshold_ms=None
     if not perfil:
@@ -1002,7 +1007,31 @@ def page_montar():
         longo_max=c[3].number_input("Teto do longo (km, 0 = sem teto)", 0.0, 60.0, 0.0, step=1.0)
         seguir=st.checkbox("Seguir a periodização do Lab (se o atleta tiver ciclo)",
                            value=bool(perfil.get("periodizacao")))
-        prova=st.text_input("Prova alvo (opcional)", "")
+        c=st.columns(4)
+        prova=c[0].selectbox("Objetivo", ["","5k","10k","21k","42k"],
+                             format_func=lambda v: v or "—")
+        prova_data=c[1].date_input("Dia da prova (opcional)", None, format="DD/MM/YYYY")
+        prova_nome=c[2].text_input("Nome da prova", "")
+        min_km=c[3].number_input("Piso de km por treino (0 = sem)", 0.0, 30.0, 0.0, step=0.5)
+        semana_max=st.number_input("Maior semana do bloco (km, 0 = automático)", 0.0, 200.0, 0.0, step=5.0)
+
+    FASES_PLANO=["Base","Específico","Polimento","Prova"]
+    FASES_FORCA=["Adaptação","Base","Força máxima","Acumulação","Pré-competitivo","Competitivo"]
+    fases={}
+    with st.expander("Fase de cada semana (opcional)"):
+        st.caption("Automática = pela posição no bloco e pela periodização do atleta. "
+                   "Polimento e Prova cortam o volume sem virar semana só de rodagem.")
+        for w in range(1, int(nsem)+1):
+            cf=st.columns([1,2,2], vertical_alignment="center")
+            cf[0].markdown(f'<div style="padding-top:26px;font-weight:700">Sem {w}</div>', unsafe_allow_html=True)
+            fc_=cf[1].selectbox("Fase", [""]+FASES_PLANO, key=f"mt_fase_{w}",
+                                format_func=lambda v: v or "automática")
+            ff_=cf[2].selectbox("Força", [""]+FASES_FORCA, key=f"mt_forca_{w}",
+                                format_func=lambda v: v or "automática")
+            e={}
+            if fc_: e["corrida"]=fc_
+            if ff_: e["forca"]=ff_
+            if e: fases[str(w)]=e
 
     if st.button("Gerar prévia", type="primary", disabled=not marcados,
                  use_container_width=True):
@@ -1014,7 +1043,13 @@ def page_montar():
                  "recup_corte_pct": rec_corte,
                  "longo_max_km": longo_max or None,
                  "seguir_periodizacao": bool(seguir),
-                 "prova": prova or None, "checar_conflitos": True}
+                 "prova": prova or None,
+                 "prova_data": prova_data.isoformat() if prova_data else None,
+                 "prova_nome": prova_nome or None,
+                 "min_km_treino": min_km or None,
+                 "semana_max_km": semana_max or None,
+                 "fases": fases or None,
+                 "checar_conflitos": True}
         if threshold_ms: payload["threshold_ms"]=threshold_ms
         cid=enfileirar("bloco_previa", {"payload": payload})
         stt,res=esperar(cid, 300, "Montando o bloco no Mac…")
@@ -1044,9 +1079,11 @@ def page_montar():
             atual=wk
             km_s=sum(x.get("km") or 0 for x in sess
                      if (dt.date.fromisoformat(x["data"])-ini0).days//7+1==wk)
+            fase_w=next((x.get("fase") for x in sess if x.get("fase") and not x.get("forca")
+                         and (dt.date.fromisoformat(x["data"])-ini0).days//7+1==wk), None)
             st.markdown(f'<div style="margin:16px 0 6px;color:#d98a1f;font-weight:700;'
                         f'font-size:.78rem;letter-spacing:.09em;text-transform:uppercase">'
-                        f'Semana {wk} · {km_s:.0f} km</div>', unsafe_allow_html=True)
+                        f'Semana {wk} · {km_s:.0f} km{" · "+fase_w if fase_w else ""}</div>', unsafe_allow_html=True)
         cc=st.columns([1,14], vertical_alignment="center")
         if cc[0].checkbox(f'incluir {dd:%d/%m}', True, key=f'mt_s_{s0["data"]}',
                           label_visibility="collapsed"):
