@@ -709,6 +709,8 @@ elif page.startswith("🧑"):
     sel=st.selectbox("Atleta", ath["nome"].tolist())
     aid=ath[ath["nome"]==sel]["id"].iloc[0]
     hero(sel, mlabel(mes), "Atleta")
+    with st.expander("Relatório semanal deste atleta"):
+        secao_semanal(aid_fixo=aid, nome_fixo=sel, chave=f"atl_sem_{aid}")
     r=q("""SELECT ROUND(SUM(CASE WHEN kind='run' AND type='completed' THEN dist_km ELSE 0 END)) km,
                   SUM(CASE WHEN type='completed' THEN 1 ELSE 0 END) sess,
                   ROUND(SUM(CASE WHEN type='completed' THEN dur_h ELSE 0 END)::numeric,1) hrs,
@@ -1142,6 +1144,51 @@ def secao_forca_biblioteca(aid, nome):
         elif stt=="erro": st.error(res)
         else: st.info("Segue rodando no Mac — confira em ⚙️ Ações.")
 
+# ---------- relatório semanal (gera no Mac, entrega aqui) ----------
+def secao_semanal(aid_fixo=None, nome_fixo=None, chave="sem"):
+    """Gera o PDF semanal de 1 ou vários atletas pela fila; 1 atleta = botão de download."""
+    import base64
+    sect("Relatório semanal")
+    hoje=dt.date.today(); seg=hoje-dt.timedelta(days=hoje.weekday())
+    semanas=[seg-dt.timedelta(days=7*i) for i in range(8)]
+    def _wl(w): return f'{w:%d/%m} – {w+dt.timedelta(days=6):%d/%m/%Y}'+(" · atual" if w==seg else "")
+    c=st.columns([1.6,2.6,1.2], vertical_alignment="bottom")
+    wk=c[0].selectbox("Semana", semanas, format_func=_wl, key=f"{chave}_wk")
+    if aid_fixo:
+        ids=[str(aid_fixo)]; todos=False
+        c[1].markdown(f'<div style="padding-bottom:10px;color:#8fa6ad">{nome_fixo}</div>', unsafe_allow_html=True)
+    else:
+        ath=q("SELECT id, nome FROM atletas WHERE ativo=1 ORDER BY nome")
+        nomes=ath["nome"].tolist()
+        sel=c[1].multiselect("Atletas", nomes, key=f"{chave}_ath", placeholder="Escolha um ou mais…")
+        todos=c[2].checkbox("Todos", key=f"{chave}_todos")
+        ids=[str(ath[ath["nome"]==n].iloc[0]["id"]) for n in sel]
+    enviar=st.checkbox("Enviar por WhatsApp depois de gerar (só quem tem contato mapeado)", key=f"{chave}_zap")
+    n=len(ids) if not todos else "todos os"
+    if st.button(f"Gerar semanal · {n} atleta(s)", key=f"{chave}_go", type="primary",
+                 disabled=not (todos or ids), use_container_width=True):
+        cid=enfileirar("semanais", {"semana": wk.isoformat(), "ids": ids, "todos": bool(todos), "enviar": bool(enviar)})
+        stt,res=esperar(cid, 1200, "Gerando no Mac (puxa a semana do TrainingPeaks)…")
+        if stt=="ok":
+            try: st.session_state[f"{chave}_res"]=json.loads(res)
+            except Exception: st.session_state[f"{chave}_res"]={"ok":[], "falhas":[str(res)]}
+        elif stt=="erro": st.error(res)
+        else: st.info("Continua rodando no Mac. Volte daqui a pouco.")
+    r=st.session_state.get(f"{chave}_res")
+    if not r: return
+    if r.get("ok"): st.success(f'{len(r["ok"])} relatório(s) gerado(s) para a semana de {r.get("semana","")[8:10]}/{r.get("semana","")[5:7]}.')
+    if r.get("falhas"): st.warning("Falhou: "+", ".join(r["falhas"][:10]))
+    if r.get("pdf_b64"):
+        st.download_button("Baixar o PDF", base64.b64decode(r["pdf_b64"]), file_name=r.get("pdf_nome","semanal.pdf"),
+                           mime="application/pdf", key=f"{chave}_dl", use_container_width=True)
+    elif r.get("zip"):
+        st.caption("Os PDFs e o ZIP ficam na pasta do Mac. Para receber aqui, gere um atleta por vez.")
+    env=r.get("envio")
+    if env:
+        st.caption(("WhatsApp: enviado." if env.get("rc")==0 else
+                    "WhatsApp: OpenWA fora do ar, nada enviado." if env.get("rc")==2 else
+                    "WhatsApp: houve falhas em alguns envios.") + " Quem já recebeu esta semana não recebe de novo.")
+
 # ---------- ações remotas ----------
 def page_acoes(mes):
     hero("Ações", "A nuvem pede, o Mac executa e devolve o resultado", "⚙️ Controle")
@@ -1163,6 +1210,8 @@ def page_acoes(mes):
         stt,res=esperar(cid, 300, "Sincronizando…")
         if stt=="ok": st.success(res); q.clear()
         elif stt=="erro": st.error(res)
+    st.divider()
+    secao_semanal(chave="acoes_sem")
 
     sect("Últimos pedidos")
     h=q("""SELECT id, tipo, status, resultado,
@@ -1174,7 +1223,7 @@ def page_acoes(mes):
     NOME={"coletar":"atualizar do TrainingPeaks","pdfs_mes":"gerar PDFs do mês",
           "sync":"sincronizar","perfil":"ler atleta","bloco_previa":"prévia de bloco",
           "forca_bib":"bibliotecas de força","forca_publicar":"publicar força",
-          "bloco_publicar":"publicar treinos","email":"enviar e-mails","hrv_refresh":"atualizar HRV"}
+          "bloco_publicar":"publicar treinos","email":"enviar e-mails","hrv_refresh":"atualizar HRV","semanais":"relatórios semanais"}
     for _,r in h.iterrows():
         txt="" if pd.isna(r["resultado"]) else str(r["resultado"])
         if r["status"]=="ok":      # respostas em JSON não interessam em texto cru
