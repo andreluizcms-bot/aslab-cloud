@@ -1,15 +1,37 @@
-# Mantém o app do Streamlit Cloud acordado (o plano grátis hiberna sem tráfego).
+# Mantém o app do Streamlit Cloud acordado. O plano grátis hiberna após ~12 h
+# sem SESSÃO de visitante; um curl no HTML não conta (não abre o websocket),
+# por isso o ping abre a página num Chrome headless e espera o app carregar.
 # Roda no GitHub, então funciona mesmo com o Mac desligado.
 name: keepalive
 on:
   schedule:
-    - cron: "*/40 * * * *"
+    - cron: "17 */5 * * *"      # a cada 5 h
   workflow_dispatch:
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
-      - name: acorda o app
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: instala o chromium do playwright
+        run: npx -y playwright@1.47.2 install --with-deps chromium
+      - name: abre o app como um visitante e, se estiver dormindo, acorda
         run: |
-          curl -s -o /dev/null -m 60 -w "HTTP %{http_code} em %{time_total}s\n" \
-            "https://appapppy-ivviqwx6qqis929mb4ljha.streamlit.app" || true
+          cat > ping.mjs <<'JS'
+          import { chromium } from "playwright";
+          const url = "https://appapppy-ivviqwx6qqis929mb4ljha.streamlit.app/";
+          const browser = await chromium.launch();
+          const page = await browser.newPage();
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
+          const wake = page.getByRole("button", { name: /get this app back up/i });
+          if (await wake.count()) { console.log("estava dormindo: acordando"); await wake.first().click(); }
+          // espera a sessão do Streamlit abrir (o app renderiza dentro de um iframe ou direto)
+          await page.waitForTimeout(45000);
+          const titulo = await page.title();
+          console.log("título:", titulo);
+          await browser.close();
+          JS
+          npm i -s playwright@1.47.2 >/dev/null 2>&1
+          node ping.mjs
