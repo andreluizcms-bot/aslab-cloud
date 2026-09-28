@@ -906,7 +906,7 @@ TIPOS=[("","— folga —"),("limiar","Limiar (sem pré-fadiga)"),("limiar_prefa
        ("rodagem_leve","Rodagem sem strides"),
        ("bike_rodagem","🚴 Bike giro Z2"),("bike_intervalado","🚴 Bike intervalado"),
        ("bike_longa","🚴 Bike longa"),
-       ("corre_anda","Corre e anda"),("forca","Força (academia)"),
+       ("corre_anda","Corre e anda"),("teste_limiar","Teste de limiar 30'"),("forca","Força (academia)"),
        ("forca_inferior","Força · membros inferiores"),("forca_superior","Força · membros superiores"),
        ("forca_empurrar","Força · empurrar"),("forca_puxar","Força · puxar"),("forca_core","Força · core")]
 TIPO_LABEL={v:t for v,t in TIPOS}
@@ -1044,6 +1044,7 @@ def page_montar():
         prova_nome=c[2].text_input("Nome da prova", "", key="mt_prova_nome")
         min_km=c[3].number_input("Piso de km por treino (0 = sem)", 0.0, 30.0, 0.0, step=0.5)
         semana_max=st.number_input("Maior semana do bloco (km, 0 = automático)", 0.0, 200.0, 0.0, step=5.0)
+        teste_limiar=st.selectbox("Reteste de limiar", ["auto","nenhum"], format_func=lambda v: "automático (a cada 6 a 8 semanas)" if v=="auto" else "nenhum")
 
     FASES_PLANO=["Base","Específico","Polimento","Prova"]
     FASES_FORCA=["Adaptação","Base","Força máxima","Acumulação","Pré-competitivo","Competitivo"]
@@ -1079,6 +1080,7 @@ def page_montar():
                  "min_km_treino": min_km or None,
                  "semana_max_km": semana_max or None,
                  "fases": fases or None,
+                 "teste_limiar": teste_limiar,
                  "provas": (([{"date": prova_data.isoformat(), "name": prova_nome or "Prova", "prio": "A"}] if prova_data else []) + provas_bloco) or None,
                  "checar_conflitos": True}
         if threshold_ms: payload["threshold_ms"]=threshold_ms
