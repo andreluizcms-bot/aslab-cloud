@@ -1101,6 +1101,9 @@ def page_montar():
     sect(f'Prévia · {len(sess)} sessões · {d.get("total_km")} km')
     if d.get("plano_aplicado"): st.caption("Volume ditado pela periodização do Lab. ✅")
     if d.get("pmc") and d["pmc"].get("resumo"): st.caption("🏁 "+d["pmc"]["resumo"])
+    if d.get("avisos"):
+        with st.expander(f'{len(d["avisos"])} ajuste(s) na sequência dos dias (regras de montagem)'):
+            for a_ in d["avisos"]: st.markdown(f"- {a_}")
     st.caption(d.get("origem_zonas") or "")
     escolhidas=[]
     ini0=dt.date.fromisoformat(sess[0]["data"]) if sess else inicio
