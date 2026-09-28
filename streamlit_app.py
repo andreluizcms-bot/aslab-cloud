@@ -994,6 +994,32 @@ def page_montar():
                                      key=f"mt_d{di}", label_visibility="visible")
     marcados={str(k):v for k,v in dias.items() if v}
 
+    # provas do calendário do TP dentro do bloco: A manda no ciclo, B vira ritmo de prova, C vira rodagem
+    _pa=st.session_state.get("mt_prova_data")
+    _pa_iso=_pa.isoformat() if _pa else None
+    _outras=[p for p in (perfil.get("provas") or [])
+             if p.get("date") and inicio.isoformat()<=p["date"]<=fim.isoformat() and p["date"]!=_pa_iso]
+    provas_bloco=[]
+    if _outras:
+        sect("Provas no período")
+        st.caption("A = prova principal (vai para o campo \"Dia da prova\"). B vira ritmo de prova com ativação na véspera e dois dias leves antes. C vira rodagem no dia.")
+        for p in _outras:
+            cp=st.columns([1.2,3,1.4], vertical_alignment="center")
+            cp[0].markdown(f'<div style="padding-top:8px;font-weight:700">{p["date"][8:10]}/{p["date"][5:7]}</div>', unsafe_allow_html=True)
+            km=p.get("km"); kmt=(f' · {"42 km" if km>=40 else "21 km" if km>=19 else f"{km:.0f} km"}' if km else "")
+            cp[1].markdown(f'<div style="padding-top:8px">{p["name"]}<span style="color:#8fa6ad">{kmt}{" · TP: "+p["prio"] if p.get("prio") else ""}</span></div>', unsafe_allow_html=True)
+            _def="C" if (p.get("prio") or "").upper()=="C" else "B"
+            esc=cp[2].selectbox("Prioridade", ["A","B","C","ignorar"], index=["A","B","C","ignorar"].index(_def),
+                                key=f'mt_prio_{p["date"]}', label_visibility="collapsed",
+                                format_func=lambda v: "ignorar" if v=="ignorar" else f"Prova {v}")
+            if esc=="A":
+                st.session_state["mt_prova_data"]=dt.date.fromisoformat(p["date"])
+                st.session_state["mt_prova_nome"]=p["name"]
+                st.session_state.pop(f'mt_prio_{p["date"]}', None)
+                st.rerun()
+            elif esc!="ignorar":
+                provas_bloco.append({"date": p["date"], "name": p["name"], "prio": esc, "km": km})
+
     with st.expander("Ajustes finos"):
         c=st.columns(4)
         b_longo=c[0].number_input("Longo inicial (km)", 4.0, 45.0,
@@ -1014,8 +1040,8 @@ def page_montar():
         c=st.columns(4)
         prova=c[0].selectbox("Objetivo", ["","5k","10k","21k","42k"],
                              format_func=lambda v: v or "—")
-        prova_data=c[1].date_input("Dia da prova (opcional)", None, format="DD/MM/YYYY")
-        prova_nome=c[2].text_input("Nome da prova", "")
+        prova_data=c[1].date_input("Dia da prova (opcional)", None, format="DD/MM/YYYY", key="mt_prova_data")
+        prova_nome=c[2].text_input("Nome da prova", "", key="mt_prova_nome")
         min_km=c[3].number_input("Piso de km por treino (0 = sem)", 0.0, 30.0, 0.0, step=0.5)
         semana_max=st.number_input("Maior semana do bloco (km, 0 = automático)", 0.0, 200.0, 0.0, step=5.0)
 
@@ -1053,6 +1079,7 @@ def page_montar():
                  "min_km_treino": min_km or None,
                  "semana_max_km": semana_max or None,
                  "fases": fases or None,
+                 "provas": (([{"date": prova_data.isoformat(), "name": prova_nome or "Prova", "prio": "A"}] if prova_data else []) + provas_bloco) or None,
                  "checar_conflitos": True}
         if threshold_ms: payload["threshold_ms"]=threshold_ms
         cid=enfileirar("bloco_previa", {"payload": payload})
