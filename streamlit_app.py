@@ -906,7 +906,9 @@ TIPOS=[("","— folga —"),("limiar","Limiar (sem pré-fadiga)"),("limiar_prefa
        ("rodagem_leve","Rodagem sem strides"),
        ("bike_rodagem","🚴 Bike giro Z2"),("bike_intervalado","🚴 Bike intervalado"),
        ("bike_longa","🚴 Bike longa"),
-       ("corre_anda","Corre e anda"),("forca","Força (academia)")]
+       ("corre_anda","Corre e anda"),("forca","Força (academia)"),
+       ("forca_inferior","Força · membros inferiores"),("forca_superior","Força · membros superiores"),
+       ("forca_empurrar","Força · empurrar"),("forca_puxar","Força · puxar"),("forca_core","Força · core")]
 TIPO_LABEL={v:t for v,t in TIPOS}
 DIAS_PT=["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"]
 
