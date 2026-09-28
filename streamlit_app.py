@@ -1098,6 +1098,7 @@ def page_montar():
     d=pv["d"]; sess=d.get("sessoes") or []
     sect(f'Prévia · {len(sess)} sessões · {d.get("total_km")} km')
     if d.get("plano_aplicado"): st.caption("Volume ditado pela periodização do Lab. ✅")
+    if d.get("pmc") and d["pmc"].get("resumo"): st.caption("🏁 "+d["pmc"]["resumo"])
     st.caption(d.get("origem_zonas") or "")
     escolhidas=[]
     ini0=dt.date.fromisoformat(sess[0]["data"]) if sess else inicio
