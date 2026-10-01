@@ -1035,7 +1035,7 @@ def page_montar():
         c=st.columns(4)
         prog=c[0].number_input("Progressão (%/sem)", 0.0, 25.0, 10.0, step=1.0)
         rec_cada=c[1].number_input("Recuperar a cada", 2, 8, 4)
-        rec_corte=c[2].number_input("Corte na recuperação (%)", 10.0, 60.0, 32.0, step=2.0)
+        rec_corte=c[2].number_input("Corte na recuperação (%)", 10.0, 60.0, 25.0, step=1.0)
         longo_max=c[3].number_input("Teto do longo (km, 0 = sem teto)", 0.0, 60.0, 0.0, step=1.0)
         seguir=st.checkbox("Seguir a periodização do Lab (se o atleta tiver ciclo)",
                            value=bool(perfil.get("periodizacao")))
