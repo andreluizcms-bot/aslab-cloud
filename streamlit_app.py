@@ -332,7 +332,7 @@ def _ay():
 hd=st.columns([1.5,4.5], vertical_alignment="center")
 hd[0].markdown(f'<div class="logo">{LOGO}</div>', unsafe_allow_html=True)
 page=hd[1].radio("Seção", ["👥 Equipe","🧑‍💼 Atleta","🫀 HRV","🏆 Liga","🧭 Periodização","🎯 Provas",
-                           "🚨 Perdidos","🏋️ Montar treino","⚙️ Ações"],
+                           "🚨 Perdidos","📄 Relatórios","🏋️ Montar treino","⚙️ Ações"],
                  horizontal=True, label_visibility="collapsed")
 
 try:
@@ -709,6 +709,8 @@ elif page.startswith("🧑"):
     sel=st.selectbox("Atleta", ath["nome"].tolist())
     aid=ath[ath["nome"]==sel]["id"].iloc[0]
     hero(sel, mlabel(mes), "Atleta")
+    with st.expander("Relatório mensal deste atleta"):
+        secao_mensal(mes, aid_fixo=aid, nome_fixo=sel, chave=f"atl_mes_{aid}")
     with st.expander("Relatório semanal deste atleta"):
         secao_semanal(aid_fixo=aid, nome_fixo=sel, chave=f"atl_sem_{aid}")
     r=q("""SELECT ROUND(SUM(CASE WHEN kind='run' AND type='completed' THEN dist_km ELSE 0 END)) km,
@@ -1180,6 +1182,46 @@ def secao_forca_biblioteca(aid, nome):
         else: st.info("Segue rodando no Mac — confira em ⚙️ Ações.")
 
 # ---------- relatório semanal (gera no Mac, entrega aqui) ----------
+def secao_mensal(mes, aid_fixo=None, nome_fixo=None, chave="mensal"):
+    """Relatório mensal (PDF) de 1 ou vários atletas dos grupos, gerado no Mac pela fila."""
+    import base64
+    sect("Relatório mensal")
+    meses_op=q("SELECT DISTINCT mes FROM treinos ORDER BY mes DESC")["mes"].tolist() or [mes]
+    c=st.columns([1.6,2.6,1.2], vertical_alignment="bottom")
+    m_sel=c[0].selectbox("Mês", meses_op, index=meses_op.index(mes) if mes in meses_op else 0,
+                         format_func=mlabel, key=f"{chave}_mes")
+    if aid_fixo:
+        ids=[str(aid_fixo)]; todos=False
+        c[1].markdown(f'<div style="padding-bottom:10px;color:#8fa6ad">{nome_fixo}</div>', unsafe_allow_html=True)
+    else:
+        ath=q("SELECT id, nome FROM atletas WHERE ativo=1 ORDER BY nome")
+        nomes=ath["nome"].tolist()
+        sel=c[1].multiselect("Atletas", nomes, key=f"{chave}_ath", placeholder="Escolha um ou mais…")
+        todos=c[2].checkbox("Todos", key=f"{chave}_todos")
+        ids=[str(ath[ath["nome"]==n].iloc[0]["id"]) for n in sel]
+    atualizar=st.checkbox("Puxar o mês do TrainingPeaks antes de gerar (demora alguns minutos)", key=f"{chave}_upd")
+    n=len(ids) if not todos else "todos os"
+    if st.button(f"Gerar mensal · {n} atleta(s)", key=f"{chave}_go", type="primary",
+                 disabled=not (todos or ids), use_container_width=True):
+        cid=enfileirar("pdfs_mes", {"mes": m_sel, "ids": ids, "todos": bool(todos), "atualizar": bool(atualizar)})
+        stt,res=esperar(cid, 1800 if atualizar else 900, "Gerando no Mac…")
+        if stt=="ok":
+            try: st.session_state[f"{chave}_res"]=json.loads(res)
+            except Exception: st.session_state[f"{chave}_res"]={"ok":[], "falhas":[str(res)]}
+        elif stt=="erro": st.error(res)
+        else: st.info("Continua rodando no Mac. Volte daqui a pouco.")
+    r=st.session_state.get(f"{chave}_res")
+    if not r: return
+    if r.get("ok"): st.success(f'{len(r["ok"])} relatório(s) de {mlabel(r.get("mes", m_sel))} gerado(s).')
+    if r.get("pulados"): st.caption("Sem treino no mês (sem PDF): "+", ".join(str(x) for x in r["pulados"][:15]))
+    if r.get("falhas"): st.warning("Falhou: "+", ".join(r["falhas"][:10]))
+    if r.get("pdf_b64"):
+        st.download_button("Baixar o PDF", base64.b64decode(r["pdf_b64"]), file_name=r.get("pdf_nome","mensal.pdf"),
+                           mime="application/pdf", key=f"{chave}_dl", use_container_width=True)
+    elif r.get("zip"):
+        st.caption("Os PDFs e o ZIP ficam na pasta do Mac (saida/<mês>). Para baixar aqui, gere um atleta por vez.")
+
+
 def secao_semanal(aid_fixo=None, nome_fixo=None, chave="sem"):
     """Gera o PDF semanal de 1 ou vários atletas pela fila; 1 atleta = botão de download."""
     import base64
@@ -1234,10 +1276,10 @@ def page_acoes(mes):
         if stt=="ok": st.success(res); q.clear()
         elif stt=="erro": st.error(res)
         else: st.info("Coleta longa — segue rodando no Mac.")
-    if c[1].button("📄 Gerar PDFs do mês", use_container_width=True):
+    if c[1].button("📄 Gerar PDFs do mês (todos)", use_container_width=True):
         cid=enfileirar("pdfs_mes", {"mes": mes})
         stt,res=esperar(cid, 900, "Gerando os relatórios…")
-        if stt=="ok": st.success(f"{res} · os PDFs ficam na pasta do Mac.")
+        if stt=="ok": st.success(f"{res} · os PDFs ficam na pasta do Mac. Para escolher atletas e baixar, use a seção Relatórios.")
         elif stt=="erro": st.error(res)
         else: st.info("Segue rodando no Mac.")
     if c[2].button("☁️ Sincronizar de novo", use_container_width=True):
@@ -1255,7 +1297,7 @@ def page_acoes(mes):
     if not len(h):
         st.caption("Nada pedido ainda."); return
     ICO={"ok":"✅","erro":"❌","executando":"⏳","pendente":"🕐"}
-    NOME={"coletar":"atualizar do TrainingPeaks","pdfs_mes":"gerar PDFs do mês",
+    NOME={"coletar":"atualizar do TrainingPeaks","pdfs_mes":"relatório mensal",
           "sync":"sincronizar","perfil":"ler atleta","bloco_previa":"prévia de bloco",
           "forca_bib":"bibliotecas de força","forca_publicar":"publicar força",
           "bloco_publicar":"publicar treinos","email":"enviar e-mails","hrv_refresh":"atualizar HRV","semanais":"relatórios semanais"}
@@ -1271,7 +1313,14 @@ def page_acoes(mes):
                     f'<span style="color:#8fa6ad;font-size:.82rem">{txt[:220]}</span></div>',
                     unsafe_allow_html=True)
 
+def page_relatorios(mes):
+    hero("Relatórios", "Mensal e semanal, em PDF, gerados no Mac e baixados aqui", "📄 Documentos")
+    secao_mensal(mes, chave="rel_mensal")
+    st.divider()
+    secao_semanal(chave="rel_sem")
+
 if page.startswith("🫀"): page_hrv()
+elif page.startswith("📄"): page_relatorios(mes)
 elif page.startswith("🏋️"): page_montar()
 elif page.startswith("⚙️"): page_acoes(mes)
 
