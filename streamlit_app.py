@@ -1035,7 +1035,8 @@ def page_montar():
         c=st.columns(4)
         prog=c[0].number_input("Progressão (%/sem)", 0.0, 25.0, 10.0, step=1.0)
         rec_cada=c[1].number_input("Recuperar a cada", 2, 8, 4)
-        rec_corte=c[2].number_input("Corte na recuperação (%)", 10.0, 60.0, 25.0, step=1.0)
+        rec_corte=c[2].number_input("Corte na recuperação (%)", 10.0, 60.0, 25.0, step=1.0,
+                                    help="Semana leve: km de corrida = média das até 3 semanas anteriores menos este corte.")
         longo_max=c[3].number_input("Teto do longo (km, 0 = sem teto)", 0.0, 60.0, 0.0, step=1.0)
         seguir=st.checkbox("Seguir a periodização do Lab (se o atleta tiver ciclo)",
                            value=bool(perfil.get("periodizacao")))
@@ -1053,7 +1054,9 @@ def page_montar():
     fases={}
     with st.expander("Fase de cada semana (opcional)"):
         st.caption("Automática = pela posição no bloco e pela periodização do atleta. "
-                   "Polimento e Prova cortam o volume sem virar semana só de rodagem.")
+                   "Polimento e Prova cortam o volume e mantêm as sessões de velocidade, mais curtas; "
+                   "só a antevéspera (rodagem leve) e a véspera (ativação) da prova mudam. "
+                   "A semana leve mira o corte abaixo da média das semanas anteriores.")
         for w in range(1, int(nsem)+1):
             cf=st.columns([1,2,2], vertical_alignment="center")
             cf[0].markdown(f'<div style="padding-top:26px;font-weight:700">Sem {w}</div>', unsafe_allow_html=True)
