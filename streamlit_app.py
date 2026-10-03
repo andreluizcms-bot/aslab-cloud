@@ -1054,6 +1054,8 @@ def page_montar():
         rec_cada=c[1].number_input("Recuperar a cada", 2, 8, 4)
         rec_corte=c[2].number_input("Corte na recuperação (%)", 10.0, 60.0, 25.0, step=1.0,
                                     help="Semana leve: km de corrida = média das até 3 semanas anteriores menos este corte.")
+        sem_rec=st.checkbox("Sem semana de recuperação", key="mt_semrec",
+                            help="Nenhuma semana leve no bloco: o volume segue a progressão e a semana leve do plano do Lab repete o volume da anterior.")
         longo_max=c[3].number_input("Teto do longo (km, 0 = sem teto)", 0.0, 60.0, 0.0, step=1.0)
         seguir=st.checkbox("Seguir a periodização do Lab (se o atleta tiver ciclo)",
                            value=bool(perfil.get("periodizacao")))
@@ -1094,7 +1096,8 @@ def page_montar():
                  "forca_objetivo": forca_obj,
                  "base": {"longo_km": b_longo, "limiar_min": b_limiar,
                           "vo2_seg": b_vo2, "rodagem_min": b_rod},
-                 "progressao_pct": prog, "recup_cada": int(rec_cada),
+                 "progressao_pct": prog, "recup_cada": 0 if sem_rec else int(rec_cada),
+                 "sem_recuperacao": bool(sem_rec),
                  "recup_corte_pct": rec_corte,
                  "longo_max_km": longo_max or None,
                  "seguir_periodizacao": bool(seguir),
