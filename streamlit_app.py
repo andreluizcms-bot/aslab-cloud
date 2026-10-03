@@ -996,6 +996,10 @@ def page_montar():
                                      key=f"mt_d{di}", label_visibility="visible")
     marcados={str(k):v for k,v in dias.items() if v}
     # força no mesmo dia da corrida: segunda sessão do dia, além do que a grade marca
+    forca_obj=st.radio("Objetivo da força", ["performance","hipertrofia"], horizontal=True, key="mt_fobj",
+                       format_func=lambda v: "Performance esportiva" if v=="performance" else "Hipertrofia",
+                       help="Performance mantém as séries pesadas e curtas do corredor. Hipertrofia passa os exercícios "
+                            "principais para 4 séries de 10 a 12 repetições. Core, descarga e a sessão da semana de prova não mudam.")
     FORCA_OPC=[v for v,_ in TIPOS if str(v).startswith("forca")]
     forca_dia={}
     with st.expander("Força no mesmo dia da corrida (opcional)"):
@@ -1087,6 +1091,7 @@ def page_montar():
         payload={"athlete_id": aid, "inicio": inicio.isoformat(), "fim": fim.isoformat(),
                  "semanas_tipos": {str(w): marcados for w in range(1, int(nsem)+1)},
                  "semanas_forca": ({str(w): forca_dia for w in range(1, int(nsem)+1)} if forca_dia else {}),
+                 "forca_objetivo": forca_obj,
                  "base": {"longo_km": b_longo, "limiar_min": b_limiar,
                           "vo2_seg": b_vo2, "rodagem_min": b_rod},
                  "progressao_pct": prog, "recup_cada": int(rec_cada),
