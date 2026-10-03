@@ -995,6 +995,19 @@ def page_montar():
                                      format_func=lambda v: TIPO_LABEL[v],
                                      key=f"mt_d{di}", label_visibility="visible")
     marcados={str(k):v for k,v in dias.items() if v}
+    # força no mesmo dia da corrida: segunda sessão do dia, além do que a grade marca
+    FORCA_OPC=[v for v,_ in TIPOS if str(v).startswith("forca")]
+    forca_dia={}
+    with st.expander("Força no mesmo dia da corrida (opcional)"):
+        st.caption("Entra como segunda sessão do dia, em todas as semanas do bloco. "
+                   "Na véspera de treino-chave a força pesada vira core, e perto da prova ela sai.")
+        for lin in (range(0,4),range(4,7)):
+            cs=st.columns(len(list(lin)))
+            for j,di in enumerate(lin):
+                v=cs[j].selectbox(DIAS_PT[di], [""]+FORCA_OPC,
+                                  format_func=lambda v: TIPO_LABEL.get(v, v) if v else "sem força extra",
+                                  key=f"mt_f{di}")
+                if v: forca_dia[str(di)]=v
 
     # provas do calendário do TP dentro do bloco: A manda no ciclo, B vira ritmo de prova, C vira rodagem
     _pa=st.session_state.get("mt_prova_data")
@@ -1073,6 +1086,7 @@ def page_montar():
                  use_container_width=True):
         payload={"athlete_id": aid, "inicio": inicio.isoformat(), "fim": fim.isoformat(),
                  "semanas_tipos": {str(w): marcados for w in range(1, int(nsem)+1)},
+                 "semanas_forca": ({str(w): forca_dia for w in range(1, int(nsem)+1)} if forca_dia else {}),
                  "base": {"longo_km": b_longo, "limiar_min": b_limiar,
                           "vo2_seg": b_vo2, "rodagem_min": b_rod},
                  "progressao_pct": prog, "recup_cada": int(rec_cada),
