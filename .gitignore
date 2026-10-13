@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 .streamlit/secrets.toml
 graphify-out/
+# dados do painel: chegam pelo Supabase, nunca pelo GitHub
+painel/data/
+painel/saida/
+painel/excluded.json
+painel/grupos.json
+painel/*.zip
+painel/supabase_config.json
