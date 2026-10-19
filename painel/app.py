@@ -494,6 +494,7 @@ def athlete_history(aid, months, today_str):
     res.sort(key=lambda x:x["date"], reverse=True)
     return res
 
+RUN_PRS=pm.RUN_PRS
 pdf_path=pm.pdf_path; pdf_path_week=pm.pdf_path_week; pdf_path_period=pm.pdf_path_period
 _months_back=pm._months_back
 
@@ -734,6 +735,31 @@ def site_footer():
     </div>''', unsafe_allow_html=True)
 
 # ================= PÁGINAS =================
+def lthr_sugestoes(data):
+    """{aid: sugestão} de quem está com LTHR a revisar. Calcula no Mac quem falta
+    (ou foi calculado há mais de 7 dias ou mudou de LTHR). Nunca grava no TP."""
+    flag=[(d["id"], d["refs"]["lthr"]) for d in data if d["intens"].get("lthr_suspect")]
+    cache=pm.ler_sugestoes_lthr()
+    lim=(dt.date.today()-dt.timedelta(days=7)).isoformat()
+    falta=[(a,l) for a,l in flag if a not in cache or cache[a].get("calc","")<lim or cache[a].get("atual")!=l]
+    if falta and not st.session_state.get("_lthr_tentou"):
+        st.session_state["_lthr_tentou"]=True
+        try:
+            with st.spinner(f"Calculando a sugestão de LTHR de {len(falta)} atleta(s) pelos picos de FC do TP…"):
+                cache.update(pm.sugestao_lthr(falta))
+        except Exception as e:
+            st.caption(f"Sugestão de LTHR indisponível agora: {e}")
+    return {a:cache.get(a) for a,_ in flag}
+
+def lthr_txt(sg, curto=False):
+    if not sg: return "sugestão ainda não calculada"
+    if not sg.get("sugerido"): return "sem FC de corrida nos últimos 90 dias: fazer o Teste de limiar 30'"
+    if sg["sugerido"]<=sg["atual"]+2:
+        return "os picos de FC não sustentam subir: confira se os treinos leves estão fortes demais"
+    dd=(f'{sg["data"][8:10]}/{sg["data"][5:7]}' if sg.get("data") else "")
+    if curto: return f'{sg["atual"]} → {sg["sugerido"]}'
+    return f'{sg["atual"]} → {sg["sugerido"]} bpm ({sg["base"]}{", "+dd if dd else ""})'
+
 def page_equipe(month):
     hero("Visão da Equipe", f'{MESES[int(month[5:7])-1].capitalize()} {month[:4]} · panorama de todos os atletas', "Equipe")
     tp=st.columns([1.25,3])
@@ -761,6 +787,24 @@ def page_equipe(month):
     c[2].metric("Km totais", f"{tot_km:,.0f}".replace(",","."))
     c[3].metric("LTHR baixo", lthr_n)
     c[4].metric("Com prova", prova_n)
+
+    # ---- LTHR a revisar: sempre com a sugestão ----
+    _sug=lthr_sugestoes(data) if lthr_n else {}
+    if lthr_n:
+        with st.expander(f"LTHR a revisar · {lthr_n} atleta(s) com sugestão", expanded=True):
+            _ls=[]
+            for d in sorted((x for x in data if x["intens"].get("lthr_suspect")), key=lambda x:x["name"].lower()):
+                sg=_sug.get(d["id"]) or {}
+                ok=bool(sg.get("sugerido")) and sg["sugerido"]>sg["atual"]+2
+                _ls.append({"Atleta":d["name"], "LTHR atual":d["refs"]["lthr"],
+                            "Sugerido":(sg["sugerido"] if ok else "–"),
+                            "Diferença":(f'+{sg["sugerido"]-sg["atual"]}' if ok else "–"),
+                            "FC média no mês":(str(round(d["fc_med"])) if d.get("fc_med") else "–"),
+                            "Base da sugestão":(f'{sg["base"]}'+(f' em {sg["data"][8:10]}/{sg["data"][5:7]}' if sg.get("data") else "") if ok else lthr_txt(sg))})
+            html_table(pd.DataFrame(_ls), num={"LTHR atual","Sugerido","Diferença","FC média no mês"})
+            st.caption("Sugestão pelos picos de FC de corrida no TrainingPeaks (últimos 90 dias): a maior entre a melhor média de 60 min "
+                       "e 95% da melhor média de 20 min, limitada a 93% da maior FC de 1 min. Se o pico veio de um treino leve, "
+                       "ela é o mínimo provável. Nada é gravado no TP: confirme com o Teste de limiar 30' e ajuste você.")
 
     # ---- painel de risco ----
     _risk=risk_cached(month, dt.date.today().isoformat())
@@ -807,12 +851,12 @@ def page_equipe(month):
             "FC rep":si(mt.get("fc_rep")),
             "Prova":ev["name"] if ev else "",
             "Data prova":prova_dt(ev),
-            "LTHR?":"⚠️" if d["intens"].get("lthr_suspect") else "",
+            "LTHR?":("⚠️ "+lthr_txt(_sug.get(d["id"]), curto=True)) if d["intens"].get("lthr_suspect") else "",
             "Métricas":"✓" if d.get("metrics") else "—",
         })
     df=pd.DataFrame(rows)
     if q: df=df[df["Atleta"].str.contains(q,case=False,na=False)]
-    if only_lthr: df=df[df["LTHR?"]=="⚠️"]
+    if only_lthr: df=df[df["LTHR?"].str.startswith("⚠️")]
     if only_prova: df=df[df["Prova"]!=""]
     if only_nomet: df=df[df["Métricas"]=="—"]
     df=df.sort_values("Km", ascending=False)
@@ -888,7 +932,9 @@ def page_atleta(month):
     except Exception:
         pass
     if d["intens"].get("lthr_suspect"):
-        st.warning(f'LTHR a revisar — FC média ≥ LTHR ({d["refs"]["lthr"]} bpm). Zonas podem estar imprecisas.')
+        _sg=lthr_sugestoes([d]).get(d["id"])
+        st.warning(f'LTHR a revisar — FC média ≥ LTHR ({d["refs"]["lthr"]} bpm). Sugestão: {lthr_txt(_sg)}. '
+                   'Nada foi alterado no TP; confirme com o Teste de limiar 30\'.')
 
     # atualização ao vivo (puxa do TP, inclui os treinos de hoje)
     u=st.columns([1.3,3])

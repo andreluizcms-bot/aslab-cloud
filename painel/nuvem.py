@@ -15,7 +15,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 REMOTOS = {"refresh_athlete", "records", "history", "semana", "eventos", "detalhe", "atletas",
            "drifts", "generate_athlete_pdf", "generate_period_pdf", "generate_weekly_pdf",
            "semanais_lote", "pdf_periodizacao", "retest", "email_configurado", "enviar_emails",
-           "arquivo"}
+           "arquivo", "sugestao_lthr"}
 SCRIPTS = {"collect.py", "gen_summaries.py", "render_all_modern.py", "refresh_metrics.py"}
 
 

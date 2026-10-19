@@ -326,6 +326,66 @@ def preview_png(pdf):
     return out if os.path.exists(out) else None
 
 
+# ---------- LTHR: sugestão para quem está sinalizado ----------
+LTHR_CACHE = os.path.join(BASE, "data", "lthr_sugestao.json")
+
+def regra_lthr(lthr, p20, p60, p1):
+    """Sugestão de LTHR pelos picos de FC de corrida (sem gravar nada no TP).
+    Friel: numa prova/teste de ~1 h a FC média fica no limiar; num esforço de 20 min, ~5% acima.
+    Teto de 93% da maior FC de 1 min, para não seguir leitura errada do sensor."""
+    cands = []
+    if p60: cands.append((p60, "melhor média de 60 min"))
+    if p20: cands.append((p20 * 0.95, "95% da melhor média de 20 min"))
+    if not cands: return None
+    val, base = max(cands, key=lambda x: x[0])
+    if p1 and val > p1 * 0.93: val, base = p1 * 0.93, "93% da FC máxima de 1 min"
+    return int(round(val)), base
+
+async def _picos_fc(aid):
+    from tp_mcp.tools.peaks import tp_get_peaks
+    from tp_mcp.client.context import athlete_override
+    tok = athlete_override.set(str(aid)); out = {}
+    try:
+        for t, dias in (("hR20min", 90), ("hR60min", 90), ("hR1min", 365)):
+            try:
+                r = await tp_get_peaks("Run", t, dias)
+                rr = [] if r.get("isError") else (r.get("records") or [])
+                out[t] = (rr[0]["value"], rr[0].get("date", "")[:10]) if rr else None
+            except Exception:
+                out[t] = None
+    finally:
+        athlete_override.reset(tok)
+    return out
+
+def ler_sugestoes_lthr():
+    try: return json.load(open(LTHR_CACHE))
+    except Exception: return {}
+
+def sugestao_lthr(itens):
+    """itens = [(aid, lthr_atual)]. Calcula, grava no cache e devolve {aid: sugestão}."""
+    async def todos():
+        sem = asyncio.Semaphore(6)
+        async def um(aid):
+            async with sem: return await _picos_fc(aid)
+        return await asyncio.gather(*[um(a) for a, _ in itens])
+    picos = asyncio.run(todos()) if itens else []
+    cache = ler_sugestoes_lthr(); hoje = dt.date.today().isoformat(); out = {}
+    for (aid, atual), pk in zip(itens, picos):
+        p20, p60, p1 = (pk.get(k) for k in ("hR20min", "hR60min", "hR1min"))
+        r = regra_lthr(atual, p20 and p20[0], p60 and p60[0], p1 and p1[0])
+        item = {"atual": atual, "calc": hoje,
+                "p20": p20, "p60": p60, "p1": p1,
+                "sugerido": r[0] if r else None, "base": r[1] if r else None}
+        if r and r[1].startswith("melhor média de 60") and p60: item["data"] = p60[1]
+        elif r and r[1].startswith("95%") and p20: item["data"] = p20[1]
+        elif r and p1: item["data"] = p1[1]
+        cache[str(aid)] = out[str(aid)] = item
+    os.makedirs(os.path.dirname(LTHR_CACHE), exist_ok=True)
+    json.dump(cache, open(LTHR_CACHE, "w"), ensure_ascii=False, indent=1)
+    ESCRITOS.append(LTHR_CACHE)
+    return out
+
+
 # ---------- outros ----------
 def arquivo(rel):
     """Caminho de um arquivo já gerado no Mac (a nuvem recebe o arquivo junto)."""
