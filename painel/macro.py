@@ -34,6 +34,13 @@ MACROS = {
 PADRAO = "10k"
 
 
+def aumento_semanal_max(rows):
+    """Maior aumento (%) entre duas semanas de carga seguidas do plano."""
+    ks = [r["km"] for r in rows if r.get("fase") in ("Base", "Específico")
+          and r.get("km") and "leve" not in (r.get("obs") or "")]
+    return max(((b / a - 1) * 100 for a, b in zip(ks, ks[1:]) if a), default=0.0)
+
+
 def objetivo_por_km(km):
     if not km: return None
     if km >= 40: return "42k"
@@ -80,9 +87,21 @@ def ponto_de_partida(hist, objetivo=None, semanas_build=None):
             "longo_max": m["longo_max"], "semanas_ideal": m["semanas"], "motivo": "; ".join(motivo)}
 
 
-def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim=None):
+def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim=None,
+              recup_cada=4, recup_corte_pct=25.0, progressao_max_pct=None,
+              longo_pico=None):
     """Semanas do ciclo até a prova (e depois dela, se fim > prova):
-    [{idx, inicio, fase, km, longo, obs}]. obs traz sessões-chave e "semana leve"."""
+    [{idx, inicio, fase, km, longo, obs}]. obs traz sessões-chave e "semana leve".
+
+    recup_cada: semana leve a cada N semanas na Base/Específico (0 = nenhuma).
+    recup_corte_pct: quanto a semana leve corta do km e do longo da rampa.
+    progressao_max_pct: teto do aumento de km entre duas semanas de carga
+        seguidas. A rampa vai do km inicial ao pico só pelas semanas de carga
+        (a leve não conta). Km inicial e pico são sempre os pedidos; o teto
+        só muda a forma da subida (ver aumento_semanal_max para o aviso).
+    longo_pico: maior longo do ciclo pedido pelo treinador. Vale acima da
+        fração padrão do objetivo e do teto de longo do macro (o treinador
+        decide); sem ele, o longo de pico sai da fração do km de pico."""
     m = MACROS.get(objetivo or PADRAO, MACROS[PADRAO])
     ini = dt.date.fromisoformat(inicio) if isinstance(inicio, str) else inicio
     prova = dt.date.fromisoformat(prova_data) if isinstance(prova_data, str) else prova_data
@@ -95,10 +114,43 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
     build = ip - taper
     n_base = round(build * m["fases"]["Base"])
     km_ini = float(km_ini); km_pico = float(km_pico)
-    longo_max = m["longo_max"]
+    longo_pedido = float(longo_pico) if longo_pico else None
+    longo_max = max(m["longo_max"], longo_pedido or 0)
     longo_ini = float(longo_ini) if longo_ini else min(km_ini * 0.3, longo_max)
     frac = m.get("frac_longo", 0.30)
-    longo_pico = min(km_pico * frac, longo_max)
+    longo_pico = longo_pedido if longo_pedido else min(km_pico * frac, longo_max)
+    # proporção máxima longo/semana: a padrão, ou a do pedido (com folga) quando
+    # o treinador pediu um longo maior que a fração do objetivo
+    teto_frac = max(frac + 0.05, (longo_pico / km_pico + 0.02) if km_pico else 0)
+    recup_cada = int(recup_cada or 0)
+    corte = 1.0 - float(recup_corte_pct if recup_corte_pct is not None else 25.0) / 100.0
+
+    def e_leve(i):
+        return recup_cada > 0 and (i + 1) % recup_cada == 0 and i < build - 1
+
+    # rampa só pelas semanas de carga do build: a semana leve não conta degrau
+    carga = [i for i in range(build) if not e_leve(i)]
+    n_carga = len(carga)
+    km_carga, longo_carga = {}, {}
+    # o km inicial e o pico pedidos são exatos: a rampa sai de um e chega no
+    # outro. O teto de aumento só escolhe a forma da subida (linear quando o 1º
+    # salto, o maior em %, cabe nele; senão % igual em todas as semanas, a
+    # forma mais suave entre os dois números) e nunca move as pontas
+    p = float(progressao_max_pct) / 100.0 if progressao_max_pct else None
+    passos = max(n_carga - 1, 1)
+    linear_cabe = (not p or km_ini <= 0 or
+                   (km_ini + (km_pico - km_ini) / passos) / km_ini <= 1 + p + 1e-9)
+    razao = (km_pico / km_ini) ** (1 / passos) if km_ini > 0 else 1.0
+    for k, i in enumerate(carga):
+        t = k / passos
+        km_carga[i] = (km_ini + (km_pico - km_ini) * t if linear_cabe
+                       else km_ini * razao ** k)
+        longo_carga[i] = longo_ini + (longo_pico - longo_ini) * t
+    # pico da rampa: polimento, prova e pós-prova partem dele
+    if km_carga:
+        km_pico = max(km_carga.values())
+        longo_pico = min(longo_carga[max(km_carga, key=km_carga.get)], longo_max)
+
     rows = []
     for i in range(n):
         wseg = seg + dt.timedelta(days=7 * i)
@@ -107,7 +159,12 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
             fase, km = "Recuperação", km_pico * 0.35
             obs = "pós-prova: só rodagem leve"
         elif i == ip:
-            fase, km = "Prova", km_pico * 0.40
+            # a semana da prova conta a própria prova (com aquecimento) e um
+            # volume leve nos outros dias; 40% do pico não cabia nem a prova
+            prova_km = {"5k": 5, "10k": 10, "21k": 21.1, "42k": 42.2}.get(objetivo or PADRAO, 10)
+            aquec = 1.0 if prova_km > 30 else 2.0
+            resto = km_pico * (0.30 if prova_km <= 10 else 0.25)
+            fase, km = "Prova", max(km_pico * 0.40, prova_km + aquec + resto)
             obs = "semana da prova: ativação na véspera"
         elif i >= ip - taper:
             k = i - (ip - taper)                                  # 0,1,2 dentro do taper
@@ -117,16 +174,18 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
             obs = m["chave"]["Polimento"]
         else:
             fase = "Base" if i < n_base else "Específico"
-            t = i / max(build - 1, 1)
-            km = km_ini + (km_pico - km_ini) * t
-            longo = longo_ini + (longo_pico - longo_ini) * t
             obs = m["chave"][fase]
-            if (i + 1) % 4 == 0 and i < build - 1:
-                km *= 0.75; longo = longo * 0.75
+            if i in km_carga:
+                km, longo = km_carga[i], longo_carga[i]
+            else:
+                # semana leve: corta a partir da última semana de carga
+                prev = max((j for j in km_carga if j < i), default=None)
+                km = (km_carga[prev] if prev is not None else km_ini) * corte
+                longo = (longo_carga[prev] if prev is not None else longo_ini) * corte
                 obs = "semana leve: só rodagem"
         km = round(km)
         if longo is not None:
-            longo = min(longo, km * (frac + 0.05) if km else longo)
+            longo = min(longo, km * teto_frac if km else longo)
             longo = round(longo * 2) / 2
             obs = f"{obs} · longo {longo:g} km"
         rows.append({"idx": i + 1, "inicio": wseg.isoformat(), "fase": fase,
