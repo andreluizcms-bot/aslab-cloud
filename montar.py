@@ -929,12 +929,21 @@ def desenho_html(passos, altura=60):
 def page_montar():
     hero("Montar treino", "Bloco estruturado publicado no TrainingPeaks — oculto do atleta",
          "🏋️ Gerador")
-    ath=q("SELECT id, nome FROM atletas WHERE ativo=1 ORDER BY nome")
-    if not len(ath):
+    # mesma lista do Gerador do Mac: atletas dos grupos do TP (vem no pacote de dados do painel)
+    try:
+        _lst=json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                         "painel","data","gerador_atletas.json")))["atletas"]
+    except Exception:
+        _a=q("SELECT id, nome FROM atletas WHERE ativo=1 ORDER BY nome")
+        _lst=[{"id":str(r["id"]),"nome":r["nome"],"grupo":""} for _,r in _a.iterrows()]
+    if not _lst:
         st.info("Sem atletas sincronizados."); return
+    _por_id={x["id"]:x for x in _lst}
     c=st.columns([3,1.4], vertical_alignment="bottom")
-    nome=c[0].selectbox("Atleta", ath["nome"].tolist(), key="mt_atleta")
-    aid=str(ath[ath["nome"]==nome].iloc[0]["id"])
+    aid=c[0].selectbox("Atleta", [x["id"] for x in _lst], key="mt_atleta_id",
+                       format_func=lambda i:(f'{_por_id[i]["nome"]} · {_por_id[i]["grupo"]}'
+                                             if _por_id[i].get("grupo") else _por_id[i]["nome"]))
+    nome=_por_id[aid]["nome"]
     if c[1].button("Carregar atleta", use_container_width=True):
         cid=enfileirar("perfil", {"athlete_id": aid})
         stt,res=esperar(cid, 180, "Lendo o atleta no TrainingPeaks…")
