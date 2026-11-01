@@ -22,6 +22,31 @@ if NUVEM: pm = nuvem.Remoto(pm)  # na nuvem essas funções rodam no Mac, pela f
 _icon=os.path.join(BASE,"assets","png","icon.png")
 st.set_page_config(page_title="AS Endurance LAB", page_icon=(_icon if os.path.exists(_icon) else "🏃"), layout="wide", initial_sidebar_state="auto")
 
+def _icone_aba(pasta_png):
+    """Logo do Lab na aba do navegador. O page_icon do Streamlit vira arquivo de mídia da
+    sessão e some (erro 500) quando a sessão é renovada com a aba aberta; aqui o ícone vai
+    embutido na página (data URI) e um vigia recoloca se alguém trocar."""
+    import base64, json as _json
+    import streamlit.components.v1 as _c
+    try:
+        ico=base64.b64encode(open(os.path.join(pasta_png,"favicon.png"),"rb").read()).decode()
+        app=base64.b64encode(open(os.path.join(pasta_png,"icon.png"),"rb").read()).decode()
+    except Exception:
+        return
+    js=("(function(){var I='data:image/png;base64,%s',A='data:image/png;base64,%s',d=document;"
+        "function f(){var ls=d.querySelectorAll('link[rel~=\"icon\"]');"
+        "if(!ls.length){var l=d.createElement('link');l.rel='icon';d.head.appendChild(l);ls=[l];}"
+        "ls.forEach(function(l){if(l.href!==I){l.type='image/png';l.href=I;}});"
+        "d.querySelectorAll('link[rel=\"apple-touch-icon\"]').forEach(function(l){if(l.href!==A)l.href=A;});}"
+        "f();new MutationObserver(f).observe(d.head,{childList:true,subtree:true,attributes:true,attributeFilter:['href']});})();"
+        % (ico, app))
+    # o script entra no documento do app (e no de fora, na nuvem) para seguir vivo entre reruns
+    _c.html("<script>(function(){var c=%s;[window.parent,window.top].forEach(function(W){try{"
+            "var d=W.document;if(d.getElementById('lab-icone'))return;var s=d.createElement('script');"
+            "s.id='lab-icone';s.textContent=c;d.head.appendChild(s);}catch(e){}});})();</script>"
+            % _json.dumps(js), height=0)
+_icone_aba(os.path.join(BASE,"assets","png"))
+
 # ---------- temas: estrutura do painel esportivo, paleta clássica do Lab ----------
 DARK=dict(
   bg=("radial-gradient(1000px 620px at 88% -12%, rgba(238,108,77,.10), transparent 62%),"
