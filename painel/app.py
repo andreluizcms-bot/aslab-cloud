@@ -1551,14 +1551,17 @@ def page_pipeline(month):
     if st.button("Coletar", type="primary"):
         with st.spinner("Coletando..."):
             rc=_run_stream([PYBIN,"collect.py","--month",tgt], st.empty())
-        st.success("Coleta concluída.") if rc==0 else st.error("Falhou (ver log).")
+        # if/else de verdade: a expressão solta caía na "magic" do Streamlit e quebrava a página
+        if rc==0: st.success("Coleta concluída.")
+        else: st.error("Falhou (ver log).")
         st.cache_data.clear()
 
     st.markdown("##### 2 · Gerar resumos por atleta")
     if st.button("Gerar resumos"):
         with st.spinner("Gerando..."):
             rc=_run_stream([PYBIN,"gen_summaries.py","--month",tgt], st.empty())
-        st.success("Resumos gerados.") if rc==0 else st.error("Falhou.")
+        if rc==0: st.success("Resumos gerados.")
+        else: st.error("Falhou.")
         st.cache_data.clear()
 
     st.markdown("##### 3 · Recados de IA")
@@ -1571,7 +1574,8 @@ def page_pipeline(month):
     if st.button("Renderizar PDFs", type="primary"):
         with st.spinner("Renderizando..."):
             rc=_run_stream([PYBIN,"render_all_modern.py","--month",tgt], st.empty())
-        st.success("PDFs gerados e ZIP montado.") if rc==0 else st.error("Falhou.")
+        if rc==0: st.success("PDFs gerados e ZIP montado.")
+        else: st.error("Falhou.")
         st.cache_data.clear()
 
 def page_provas(month):
