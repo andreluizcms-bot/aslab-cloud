@@ -109,7 +109,8 @@ def _migrate(con):
     con.execute("""INSERT OR IGNORE INTO periodizacao_provas(plano_id, date, nome, prio)
                    SELECT p.id, p.prova_data, p.nome, 'A' FROM periodizacao p
                    WHERE NOT EXISTS (SELECT 1 FROM periodizacao_provas pp
-                                     WHERE pp.plano_id = p.id)""")
+                                     WHERE pp.plano_id = p.id)
+                     AND COALESCE(p.obs, '') != 'sem prova'""")
 
 def upsert_rec(rec, month, con=None, ativo=1):
     """Grava o registro de UM atleta em UM mês (substitui os treinos do mês)."""

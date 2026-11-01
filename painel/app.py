@@ -1669,10 +1669,14 @@ def page_periodizacao(month):
     sel=st.selectbox("Atleta", list(id_by.keys()), key="atp_ath")
     aid=id_by[sel]
 
-    planos=con.execute("""SELECT id,nome,prova_data,inicio FROM periodizacao
+    planos=con.execute("""SELECT id,nome,prova_data,inicio,COALESCE(obs,'') FROM periodizacao
                           WHERE atleta_id=? ORDER BY prova_data DESC""",(aid,)).fetchall()
+    # ciclo sem prova (criado no Gerador: só Base ou Base + Específico): a data
+    # guardada em prova_data é o fim do período, não uma prova
+    _sem_prova={p[0] for p in planos if p[4]=="sem prova"}
     def _plabel(p):
-        return f'{p[1]} · prova {dt.date.fromisoformat(p[2]).strftime("%d/%m/%y")}'
+        _d=dt.date.fromisoformat(p[2]).strftime("%d/%m/%y")
+        return f'{p[1]} · até {_d} (sem prova)' if p[4]=="sem prova" else f'{p[1]} · prova {_d}'
     _labels=["➕ Criar novo ciclo"]+[_plabel(p) for p in planos]
     # plano recém-criado/excluído: ajusta a seleção ANTES de instanciar o widget
     _novo=st.session_state.pop("_atp_novo", None)
@@ -1769,13 +1773,14 @@ def page_periodizacao(month):
         con.close(); return
 
     # ---------- plano existente ----------
-    pid, pnome, pdata_s, pini_s = planos[[_plabel(p) for p in planos].index(escolha)]
+    pid, pnome, pdata_s, pini_s, _pobs = planos[[_plabel(p) for p in planos].index(escolha)]
+    sem_prova = pid in _sem_prova
     pdata=dt.date.fromisoformat(pdata_s)
     sem=con.execute("""SELECT idx,inicio,fase,km,horas,obs,longo_km FROM periodizacao_semanas
                        WHERE plano_id=? ORDER BY idx""",(pid,)).fetchall()
     pvs=con.execute("""SELECT date,nome,prio FROM periodizacao_provas
                        WHERE plano_id=? ORDER BY prio,date""",(pid,)).fetchall()
-    if not pvs: pvs=[(pdata_s,pnome,"A")]
+    if not pvs and not sem_prova: pvs=[(pdata_s,pnome,"A")]
     prova_por_seg={}
     for d0,nm,pr in pvs:
         dd=dt.date.fromisoformat(d0); wseg=(dd-dt.timedelta(days=dd.weekday())).isoformat()
@@ -1789,7 +1794,10 @@ def page_periodizacao(month):
     st.caption("  ·  ".join(f'🏁 **{pr}** {nm} — {dt.date.fromisoformat(d0).strftime("%d/%m/%y")}'
                             for d0,nm,pr in pvs))
     k=st.columns(5)
-    k[0].metric("Prova A", pdata.strftime("%d/%m/%y"), (f"em {dias}d" if dias>=0 else "realizada"), delta_color="off")
+    if sem_prova:
+        k[0].metric("Fim do ciclo", pdata.strftime("%d/%m/%y"), (f"em {dias}d" if dias>=0 else "encerrado"), delta_color="off")
+    else:
+        k[0].metric("Prova A", pdata.strftime("%d/%m/%y"), (f"em {dias}d" if dias>=0 else "realizada"), delta_color="off")
     k[1].metric("Semanas", len(sem))
     k[2].metric("Km do ciclo", f"{tot_km:.0f}")
     k[3].metric("Semana pico", f"{pico:.0f} km")
@@ -1865,7 +1873,8 @@ def page_periodizacao(month):
         con.commit(); st.toast("Plano salvo!", icon="💾"); st.rerun()
     # provas do ciclo (A/B/C)
     with st.expander("🏁 Provas do ciclo (A/B/C)"):
-        pvdf=pd.DataFrame([{"Data":dt.date.fromisoformat(d0),"Nome":nm,"Prioridade":pr} for d0,nm,pr in pvs])
+        pvdf=pd.DataFrame([{"Data":dt.date.fromisoformat(d0),"Nome":nm,"Prioridade":pr} for d0,nm,pr in pvs],
+                          columns=["Data","Nome","Prioridade"])
         pved=st.data_editor(pvdf, hide_index=True, num_rows="dynamic", width="stretch", key=f"atp_pv_{pid}",
             column_config={
                 "Data": st.column_config.DateColumn(format="DD/MM/YYYY", required=True),

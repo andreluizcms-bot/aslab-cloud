@@ -106,6 +106,19 @@ table.tbl td.num,table.tbl th.num{text-align:right}
 .hrvc .pr i{flex:1;height:12px;border-radius:3px;display:block}
 .hrvc .msg{font-size:.8rem;color:$text;line-height:1.35;margin-top:2px}
 .hrvc .aux{font-size:11px;color:$mut}
+/* caixinha da prévia na altura do título do treino, mesmo com o treino aberto */
+[class*="st-key-mt_linha_s"] [data-testid="stColumn"]:first-child{padding-top:11px}
+/* celular: grades de 2 colunas no gerador e a caixinha da prévia na mesma linha do treino */
+@media (max-width:640px){
+  .block-container{padding-left:.8rem;padding-right:.8rem}
+  .hero{padding:12px 14px 10px}
+  .hero h1{font-size:1.75rem}
+  [class*="st-key-mt_grade"] [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:.6rem!important}
+  [class*="st-key-mt_grade"] [data-testid="stColumn"]{min-width:calc(50% - .3rem)!important;flex:1 1 calc(50% - .3rem)!important;width:auto!important}
+  [class*="st-key-mt_linha"] [data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;gap:.5rem!important}
+  [class*="st-key-mt_linha"] [data-testid="stColumn"]{min-width:0!important}
+  [class*="st-key-mt_linha"] [data-testid="stColumn"]:first-child{flex:0 0 auto!important;width:auto!important}
+}
 """)
 st.markdown("<style>"+_CSS.substitute(P)+"</style>", unsafe_allow_html=True)
 def hero(t, sub="", kick=""):
@@ -293,6 +306,11 @@ def cmd(cid):
     finally:
         con.close()
 
+def _resultado(cid):
+    """Situação de um pedido guardado no link (texto vindo da URL)."""
+    try: return cmd(int(cid))
+    except Exception: return ("sumiu", None)
+
 def esperar(cid, segundos=240, msg="Mandando para o Mac…"):
     """Aguarda o Mac executar. Uma conexão só, consultando de 2 em 2 segundos."""
     import time
@@ -357,7 +375,7 @@ st.markdown(f'<div class="tick"><span>●</span><span>{_ref}: <b>{_n}</b> treina
 meses=q("SELECT DISTINCT mes FROM treinos ORDER BY mes DESC")["mes"].tolist()
 if not meses: st.info("Sem dados ainda — rode a sincronização no Mac."); st.stop()
 mlabel=lambda m: f'{MESES[int(m[5:7])-1].capitalize()} {m[:4]}'
-mes=st.selectbox("Mês", meses, format_func=mlabel)
+mes=meses[0]          # aqui só fica o Gerador; o seletor de mês era das páginas antigas
 
 # ---------- páginas ----------
 
@@ -926,7 +944,26 @@ def desenho_html(passos, altura=60):
     return (f'<div style="position:relative;height:{altura}px;margin:2px 0 10px;'
             f'border-bottom:1px solid rgba(255,255,255,.18)">{barras}</div>')
 
+def _sem_teclado():
+    """No celular, seletor de lista fixa abre só a lista, sem subir o teclado.
+    A busca por nome continua no atleta e no treino da biblioteca."""
+    import streamlit.components.v1 as _c
+    _c.html("""<script>
+(function(){ try {
+  var W=window.parent, d=W.document;
+  if (W.__aslabSemTeclado) return; W.__aslabSemTeclado=1;
+  function fix(){
+    d.querySelectorAll('[data-baseweb="select"] input, [data-testid="stDateInput"] input').forEach(function(i){
+      if (i.closest('.st-key-mt_atleta_id, .st-key-fb_treino')) return;
+      if (i.getAttribute('inputmode')!=='none') i.setAttribute('inputmode','none');
+    });
+  }
+  fix(); new W.MutationObserver(fix).observe(d.body, {childList:true, subtree:true});
+} catch(e) {} })();
+</script>""", height=0)
+
 def page_montar():
+    _sem_teclado()
     hero("Montar treino", "Bloco estruturado publicado no TrainingPeaks — oculto do atleta",
          "🏋️ Gerador")
     # mesma lista do Gerador do Mac: atletas dos grupos do TP (vem no pacote de dados do painel)
@@ -939,18 +976,39 @@ def page_montar():
     if not _lst:
         st.info("Sem atletas sincronizados."); return
     _por_id={x["id"]:x for x in _lst}
+    qp=st.query_params
+    # o link guarda o atleta e os pedidos feitos ao Mac: se o celular bloquear a tela ou
+    # recarregar a página no meio da espera, a tela volta de onde parou
+    if "mt_atleta_id" not in st.session_state and qp.get("a") in _por_id:
+        st.session_state["mt_atleta_id"]=qp["a"]
     c=st.columns([3,1.4], vertical_alignment="bottom")
     aid=c[0].selectbox("Atleta", [x["id"] for x in _lst], key="mt_atleta_id",
                        format_func=lambda i:(f'{_por_id[i]["nome"]} · {_por_id[i]["grupo"]}'
                                              if _por_id[i].get("grupo") else _por_id[i]["nome"]))
     nome=_por_id[aid]["nome"]
+    if qp.get("a")!=aid:                  # trocou de atleta: os pedidos do link eram do anterior
+        for k in ("p","v","pub"): qp.pop(k, None)
+        qp["a"]=aid
+    if qp.get("pub"):
+        stt,res=_resultado(qp["pub"])
+        if stt=="ok":
+            st.success(res); st.session_state.pop("mt_previa", None)
+            for k in ("v","pub"): qp.pop(k, None)
+        elif stt in ("pendente","executando"):
+            st.info("O Mac ainda está publicando os treinos deste atleta.")
+            st.button("Ver se terminou", key="mt_ver_pub")
+        else:
+            if stt=="erro": st.error(res)
+            qp.pop("pub", None)
     if c[1].button("Carregar atleta", use_container_width=True):
         cid=enfileirar("perfil", {"athlete_id": aid})
+        qp["p"]=str(cid)
         stt,res=esperar(cid, 180, "Lendo o atleta no TrainingPeaks…")
         if stt=="ok":
             st.session_state["mt_perfil"]={"aid":aid, **json.loads(res)}
             st.rerun()
-        else: st.error(res or "O Mac não respondeu — ele precisa estar ligado.")
+        elif stt!="esperando":
+            qp.pop("p", None); st.error(res or "O Mac não respondeu — ele precisa estar ligado.")
 
     perfil=st.session_state.get("mt_perfil") or {}
     if perfil.get("aid")!=aid:
@@ -959,6 +1017,17 @@ def page_montar():
             st.session_state.pop("mt_previa", None)
         for k in [k for k in st.session_state if k.startswith(("mt_fase_","mt_forca_","mt_s_"))]:
             st.session_state.pop(k, None)
+        if qp.get("p"):
+            stt,res=_resultado(qp["p"])
+            if stt=="ok":
+                perfil={"aid":aid, **json.loads(res)}
+                st.session_state["mt_perfil"]=perfil
+            elif stt in ("pendente","executando"):
+                st.info("O Mac ainda está lendo este atleta no TrainingPeaks. Pode sair do app e voltar depois.")
+                st.button("Ver se terminou", key="mt_ver_perfil")
+                return
+            else:
+                qp.pop("p", None)
     base_sug=perfil.get("base_sugerida") or {}
     threshold_ms=None
     if not perfil:
@@ -987,7 +1056,7 @@ def page_montar():
                            unsafe_allow_html=True)
 
     seg=dt.date.today()+dt.timedelta(days=(7-dt.date.today().weekday()) % 7 or 7)
-    c=st.columns(3)
+    c=st.container(key="mt_grade_ini").columns(3)
     inicio=c[0].date_input("Começa na segunda", seg, format="DD/MM/YYYY")
     nsem=c[1].number_input("Semanas", 1, 12, 4)
     fim=inicio+dt.timedelta(days=int(nsem)*7-1)
@@ -997,8 +1066,9 @@ def page_montar():
     sect("Semana padrão")
     st.caption("Vale para todas as semanas do bloco; o volume progride sozinho.")
     dias={}
+    grade=st.container(key="mt_grade_dias")
     for lin in (range(0,4),range(4,7)):
-        cs=st.columns(len(list(lin)))
+        cs=grade.columns(len(list(lin)))
         for j,di in enumerate(lin):
             dias[di]=cs[j].selectbox(DIAS_PT[di], [v for v,_ in TIPOS],
                                      format_func=lambda v: TIPO_LABEL[v],
@@ -1014,8 +1084,9 @@ def page_montar():
     with st.expander("Força no mesmo dia da corrida (opcional)"):
         st.caption("Entra como segunda sessão do dia, em todas as semanas do bloco. "
                    "Na véspera de treino-chave a força pesada vira core, e perto da prova ela sai.")
+        grade=st.container(key="mt_grade_forca")
         for lin in (range(0,4),range(4,7)):
-            cs=st.columns(len(list(lin)))
+            cs=grade.columns(len(list(lin)))
             for j,di in enumerate(lin):
                 v=cs[j].selectbox(DIAS_PT[di], [""]+FORCA_OPC,
                                   format_func=lambda v: TIPO_LABEL.get(v, v) if v else "sem força extra",
@@ -1048,7 +1119,7 @@ def page_montar():
             elif esc!="ignorar":
                 provas_bloco.append({"date": p["date"], "name": p["name"], "prio": esc, "km": km})
 
-    with st.expander("Ajustes finos"):
+    with st.expander("Ajustes finos"), st.container(key="mt_grade_ajustes"):
         c=st.columns(4)
         b_longo=c[0].number_input("Longo inicial (km)", 4.0, 45.0,
                                   float(base_sug.get("longo_km") or 12), step=1.0)
@@ -1086,7 +1157,7 @@ def page_montar():
                    "só a antevéspera (rodagem leve) e a véspera (ativação) da prova mudam. "
                    "A semana leve mira o corte abaixo da média das semanas anteriores.")
         for w in range(1, int(nsem)+1):
-            cf=st.columns([1,2,2], vertical_alignment="center")
+            cf=st.container(key=f"mt_linha_fase_{w}").columns([1,2,2], vertical_alignment="center")
             cf[0].markdown(f'<div style="padding-top:26px;font-weight:700">Sem {w}</div>', unsafe_allow_html=True)
             fc_=cf[1].selectbox("Fase", [""]+FASES_PLANO, key=f"mt_fase_{w}",
                                 format_func=lambda v: v or "automática")
@@ -1121,15 +1192,26 @@ def page_montar():
                  "checar_conflitos": True}
         if threshold_ms: payload["threshold_ms"]=threshold_ms
         cid=enfileirar("bloco_previa", {"payload": payload})
+        qp["v"]=str(cid)
         stt,res=esperar(cid, 300, "Montando o bloco no Mac…")
         if stt=="ok":
             st.session_state["mt_previa"]={"cid":cid, "aid":aid, "nome":nome,
                                            "d":json.loads(res)}
             st.rerun()
-        elif stt=="erro": st.error(res)
+        elif stt=="erro": qp.pop("v", None); st.error(res)
         else: st.warning("Ainda rodando. Abra de novo daqui a pouco — o pedido não se perde.")
 
     pv=st.session_state.get("mt_previa")
+    if (not pv or pv["aid"]!=aid) and qp.get("v"):
+        stt,res=_resultado(qp["v"])
+        if stt=="ok":
+            pv={"cid":int(qp["v"]), "aid":aid, "nome":nome, "d":json.loads(res)}
+            st.session_state["mt_previa"]=pv
+        elif stt in ("pendente","executando"):
+            st.info("O Mac ainda está montando a prévia.")
+            st.button("Ver se terminou", key="mt_ver_previa")
+        else:
+            qp.pop("v", None)
     if not pv or pv["aid"]!=aid:
         secao_forca_biblioteca(aid, nome)
         return
@@ -1145,7 +1227,7 @@ def page_montar():
     ini0=dt.date.fromisoformat(sess[0]["data"]) if sess else inicio
     ini0-=dt.timedelta(days=ini0.weekday())
     atual=None
-    for s0 in sess:
+    for i_,s0 in enumerate(sess):
         dd=dt.date.fromisoformat(s0["data"])
         wk=(dd-ini0).days//7+1
         if wk!=atual:
@@ -1157,9 +1239,10 @@ def page_montar():
             st.markdown(f'<div style="margin:16px 0 6px;color:#d98a1f;font-weight:700;'
                         f'font-size:.78rem;letter-spacing:.09em;text-transform:uppercase">'
                         f'Semana {wk} · {km_s:.0f} km{" · "+fase_w if fase_w else ""}</div>', unsafe_allow_html=True)
-        cc=st.columns([1,14], vertical_alignment="center")
-        if cc[0].checkbox(f'incluir {dd:%d/%m}', True, key=f'mt_s_{s0["data"]}',
-                          label_visibility="collapsed"):
+        cc=st.container(key=f"mt_linha_s{i_}").columns([1,14], vertical_alignment="top")
+        # força extra cai no mesmo dia da corrida: a chave leva o índice para não repetir
+        if cc[0].checkbox(f'incluir {dd:%d/%m}', True, key=f'mt_s_{s0["data"]}_{i_}',
+                          label_visibility="collapsed") and s0["data"] not in escolhidas:
             escolhidas.append(s0["data"])
         with cc[1].expander(f'{WD[dd.weekday()]} {dd:%d/%m} · {s0.get("titulo","")}'
                             f'  ·  {s0.get("km","?")} km'):
@@ -1181,11 +1264,13 @@ def page_montar():
         cid=enfileirar("bloco_publicar", {"athlete_id": aid, "atleta_nome": pv["nome"],
                                           "previa_id": pv["cid"], "dias": escolhidas,
                                           "apagar_ids": apagar})
+        qp["pub"]=str(cid)
         stt,res=esperar(cid, 600, "Publicando no TrainingPeaks…")
         if stt=="ok":
             st.success(res); st.session_state.pop("mt_previa", None); q.clear()
-        elif stt=="erro": st.error(res)
-        else: st.info("Continua rodando no Mac. Confira em ⚙️ Ações.")
+            for k in ("v","pub"): qp.pop(k, None)
+        elif stt=="erro": qp.pop("pub", None); st.error(res)
+        else: st.info("Continua rodando no Mac. Pode fechar o app: ao voltar, o resultado aparece aqui.")
     secao_forca_biblioteca(aid, nome)
 
 def secao_forca_biblioteca(aid, nome):

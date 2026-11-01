@@ -89,7 +89,8 @@ def ponto_de_partida(hist, objetivo=None, semanas_build=None):
 
 def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim=None,
               recup_cada=4, recup_corte_pct=25.0, progressao_max_pct=None,
-              longo_pico=None):
+              longo_pico=None, fases_ciclo=None, ini_auto=False, min_km=None,
+              dias_semana=None):
     """Semanas do ciclo até a prova (e depois dela, se fim > prova):
     [{idx, inicio, fase, km, longo, obs}]. obs traz sessões-chave e "semana leve".
 
@@ -101,18 +102,39 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
         só muda a forma da subida (ver aumento_semanal_max para o aviso).
     longo_pico: maior longo do ciclo pedido pelo treinador. Vale acima da
         fração padrão do objetivo e do teto de longo do macro (o treinador
-        decide); sem ele, o longo de pico sai da fração do km de pico."""
+        decide); sem ele, o longo de pico sai da fração do km de pico.
+    fases_ciclo: ciclo SEM prova, do início até `fim` (o fim do período):
+        "base" = todas as semanas de Base; "base_especifico" = Base e depois
+        Específico. Sem polimento, sem semana de prova; a última semana é o
+        pico (km e longo pedidos).
+    ini_auto: o km inicial NÃO foi digitado pelo treinador (veio do histórico).
+        Então o ciclo sai do pico pedido: começa no mínimo em
+        pico / (1 + aumento)^(semanas de carga - 1), e o longo inicial acompanha
+        na mesma proporção do longo de pico. Km inicial digitado é respeitado.
+    min_km / dias_semana: nenhuma semana fica abaixo do longo dela mais os
+        outros dias de treino com o mínimo por treino (e o longo fica acima
+        do mínimo por treino)."""
     m = MACROS.get(objetivo or PADRAO, MACROS[PADRAO])
     ini = dt.date.fromisoformat(inicio) if isinstance(inicio, str) else inicio
-    prova = dt.date.fromisoformat(prova_data) if isinstance(prova_data, str) else prova_data
     seg = ini - dt.timedelta(days=ini.weekday())
-    prova_seg = prova - dt.timedelta(days=prova.weekday())
-    fim_seg = prova_seg if fim is None else max(prova_seg, (fim if not isinstance(fim, str) else dt.date.fromisoformat(fim)))
-    n = max(int((fim_seg - seg).days / 7) + 1, 3)
-    ip = min(int((prova_seg - seg).days / 7), n - 1)          # semana da prova
-    taper = min(m["taper"], max(1, ip - 3))                     # ciclo curto: taper menor
-    build = ip - taper
-    n_base = round(build * m["fases"]["Base"])
+    if fases_ciclo:
+        f = fim or prova_data
+        f = dt.date.fromisoformat(f) if isinstance(f, str) else f
+        fim_seg = f - dt.timedelta(days=f.weekday())
+        n = max(int((fim_seg - seg).days / 7) + 1, 1)
+        ip = n                                                  # nenhuma semana de prova
+        taper = 0
+        build = n
+        n_base = n if fases_ciclo == "base" else max(1, round(build * m["fases"]["Base"]))
+    else:
+        prova = dt.date.fromisoformat(prova_data) if isinstance(prova_data, str) else prova_data
+        prova_seg = prova - dt.timedelta(days=prova.weekday())
+        fim_seg = prova_seg if fim is None else max(prova_seg, (fim if not isinstance(fim, str) else dt.date.fromisoformat(fim)))
+        n = max(int((fim_seg - seg).days / 7) + 1, 3)
+        ip = min(int((prova_seg - seg).days / 7), n - 1)          # semana da prova
+        taper = min(m["taper"], max(1, ip - 3))                     # ciclo curto: taper menor
+        build = ip - taper
+        n_base = round(build * m["fases"]["Base"])
     km_ini = float(km_ini); km_pico = float(km_pico)
     longo_pedido = float(longo_pico) if longo_pico else None
     longo_max = max(m["longo_max"], longo_pedido or 0)
@@ -131,6 +153,19 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
     # rampa só pelas semanas de carga do build: a semana leve não conta degrau
     carga = [i for i in range(build) if not e_leve(i)]
     n_carga = len(carga)
+    # ponto de partida calculado pelo pico pedido (quando o treinador não digitou
+    # o km inicial): o histórico não pode levar o ciclo a semanas de 4 km com o
+    # pico em 35
+    if ini_auto and km_pico > 0:
+        p_auto = float(progressao_max_pct) / 100.0 if progressao_max_pct else 0.10
+        km_ini = max(km_ini, km_pico / (1 + p_auto) ** max(n_carga - 1, 0))
+        if longo_pico:
+            longo_ini = max(longo_ini, longo_pico * km_ini / km_pico)
+    if min_km:
+        longo_ini = max(longo_ini, float(min_km) + 0.5)
+    km_ini = min(km_ini, km_pico)
+    if longo_pico:
+        longo_ini = min(longo_ini, longo_pico)
     km_carga, longo_carga = {}, {}
     # o km inicial e o pico pedidos são exatos: a rampa sai de um e chega no
     # outro. O teto de aumento só escolhe a forma da subida (linear quando o 1º
@@ -190,4 +225,19 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
             obs = f"{obs} · longo {longo:g} km"
         rows.append({"idx": i + 1, "inicio": wseg.isoformat(), "fase": fase,
                      "km": km, "longo": longo, "obs": obs})
+    # piso da semana: o longo dela + os outros dias com o mínimo por treino
+    if min_km:
+        import re as _re
+        outros = max(int(dias_semana) - 1, 1) if dias_semana else 1
+        for r in rows:
+            if r["longo"] is None or r["fase"] == "Prova":
+                continue
+            L = max(r["longo"], float(min_km) + 0.5)
+            L = round(L * 2) / 2
+            piso_sem = int(-(-(L + outros * float(min_km)) // 1))       # arredonda para cima
+            if L != r["longo"]:
+                r["obs"] = _re.sub(r"longo [\d.,]+ km", f"longo {L:g} km", r["obs"])
+                r["longo"] = L
+            if r["km"] < piso_sem:
+                r["km"] = piso_sem
     return rows
