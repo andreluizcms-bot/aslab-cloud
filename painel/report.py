@@ -167,6 +167,9 @@ def compute(name, period_label, prev_label, start, end, workouts, prev, fitness,
         elif w.get("wt")==1: w["kind"]="swim"
         elif w.get("kind") in (None,"other") and w.get("sport") in _SPK:
             w["kind"]=_SPK[w["sport"]]
+        # duração impossível (negativa, como o -596522 h do "Teste de 3k", ou acima de
+        # 2 dias) vale 0: dados já coletados antes da trava no collect.py
+        if not 0<=(w.get("dur_h") or 0)<=48: w["dur_h"]=0.0
     completed=[w for w in workouts if w["type"]=="completed"]
     planned  =[w for w in workouts if w["type"]=="planned"]
     runs     =[w for w in completed if w["kind"]=="run"]

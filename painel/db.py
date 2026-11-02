@@ -131,7 +131,9 @@ def upsert_rec(rec, month, con=None, ativo=1):
         rows.append((aid, month, (w.get("date") or "")[:10], w.get("type") or "",
                      w.get("title"), w.get("kind"), w.get("sport"), w.get("wt"),
                      str(w.get("wid")) if w.get("wid") is not None else None,
-                     w.get("dist_km"), w.get("dur_h"), w.get("tss"), w.get("hr"),
+                     w.get("dist_km"),
+                     w.get("dur_h") if 0 <= (w.get("dur_h") or 0) <= 48 else 0.0,   # duração impossível do TP
+                     w.get("tss"), w.get("hr"),
                      w.get("cad"), w.get("if_"), w.get("elev"), w.get("cal"),
                      1 if w.get("was_planned") else 0))
     con.executemany("""INSERT INTO treinos(atleta_id,mes,date,type,title,kind,sport,wt,wid,
