@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a2026">
+<title>AS Endurance LAB · Gerador de Treinos</title>
+<link rel="stylesheet" href="/static/fonts/faces.css?v={{ v }}">
+<link rel="stylesheet" href="/static/style.css?v={{ v }}">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="ic-atleta" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></symbol>
+  <symbol id="ic-bloco" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+  <symbol id="ic-semanas" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16M15 4v16"/></symbol>
+  <symbol id="ic-previa" viewBox="0 0 24 24"><path d="M3 17l5-6 4 4 4-6 5 8"/><path d="M3 21h18"/></symbol>
+  <symbol id="ic-publicar" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></symbol>
+  <symbol id="ic-bandeira" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+  <symbol id="ic-painel" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="ic-nota" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  <symbol id="ic-estrutura" viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h13"/><circle cx="17" cy="12" r="2"/></symbol>
+  <symbol id="ic-editar" viewBox="0 0 24 24"><path d="M4 20l4-1L19 8l-3-3L5 16z"/><path d="M14 7l3 3"/></symbol>
+  <symbol id="ic-forca" viewBox="0 0 24 24"><path d="M3 12h3M18 12h3M6 8v8M18 8v8M9 6v12M15 6v12M9 12h6"/></symbol>
+  <symbol id="ic-seta" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="ic-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="ic-tema" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16A8 8 0 0 0 12 4z" fill="currentColor" stroke="none"/></symbol>
+</svg>
+
+<header class="topo">
+  <a class="lg" href="/" aria-label="AS Endurance LAB">
+    <span class="as">AS</span><span class="barra"></span>
+    <span class="tx">ENDURANCE <em>LAB</em></span>
+  </a>
+  <span class="app-nome">Gerador de Treinos</span>
+
+  <div class="atleta-sel">
+    <input id="busca" placeholder="Buscar atleta…" autocomplete="off" aria-label="Buscar atleta">
+    <select id="atleta" aria-label="Atleta"><option>carregando…</option></select>
+    <button id="carregar" class="primario">Carregar</button>
+    <label class="chk-fora" title="Mostra também quem está na conta do TP mas fora dos grupos"><input type="checkbox" id="fora-grupos"> fora dos grupos</label>
+  </div>
+
+  <div class="topo-acoes">
+    <span class="status" id="status-tp" title="Conexão com o TrainingPeaks"><i></i><span>TrainingPeaks</span></span>
+    <a class="ghost icone" href="http://127.0.0.1:8520" target="_blank" title="Painel do Lab"><svg><use href="#ic-painel"/></svg><span>Painel</span></a>
+    <button id="tema" class="ghost icone" title="Alternar tema"><svg><use href="#ic-tema"/></svg></button>
+  </div>
+</header>
+
+<div class="mesa">
+  <!-- trilho de passos -->
+  <nav class="trilho" aria-label="Passos">
+    <button class="passo-btn ativo" data-passo="atleta"><svg><use href="#ic-atleta"/></svg><span>Atleta</span><small id="tr-atleta">escolha na barra</small></button>
+    <button class="passo-btn" data-passo="bloco" disabled><svg><use href="#ic-bloco"/></svg><span>Bloco</span><small id="tr-bloco">datas e prova</small></button>
+    <button class="passo-btn" data-passo="semanas" disabled><svg><use href="#ic-semanas"/></svg><span>Semanas</span><small id="tr-semanas">dias e tipos</small></button>
+    <button class="passo-btn" data-passo="previa" disabled><svg><use href="#ic-previa"/></svg><span>Prévia</span><small id="tr-previa">gere para ver</small></button>
+    <button class="publicar-btn" id="publicar-trilho" disabled><svg><use href="#ic-publicar"/></svg><span>Publicar</span><small id="tr-publicar">nada gerado</small></button>
+  </nav>
+
+  <!-- resumo -->
+  <aside class="resumo" id="resumo">
+    <div class="res-atleta"><b id="res-nome">—</b><small id="res-sub">nenhum atleta</small></div>
+    <dl>
+      <div><dt>Semanas</dt><dd id="res-semanas">—</dd></div>
+      <div><dt>Período</dt><dd id="res-periodo">—</dd></div>
+      <div><dt>Prova</dt><dd id="res-prova">—</dd></div>
+      <div><dt>Maior longo</dt><dd id="res-longo">—</dd></div>
+      <div><dt>Maior semana</dt><dd id="res-semana">—</dd></div>
+      <div><dt>Dias/semana</dt><dd id="res-dias">—</dd></div>
+      <div><dt>Força</dt><dd id="res-forca">—</dd></div>
+      <div><dt>Zonas</dt><dd id="res-zonas">—</dd></div>
+    </dl>
+    <div class="res-previa oculto" id="res-previa">
+      <dt>Prévia</dt>
+      <dd><b id="res-p-km">—</b> km · <b id="res-p-n">—</b> treinos</dd>
+    </div>
+  </aside>
+
+  <!-- área de trabalho -->
+  <main class="trabalho">
+    <div class="ciclo oculto" id="ciclo">
+      <div class="ciclo-cab"><span>Linha do ciclo</span><span id="ciclo-legenda"></span></div>
+      <div class="ciclo-faixa" id="ciclo-faixa"></div>
+    </div>
+
+    <!-- 1. ATLETA -->
+    <section class="passo ativo" id="passo-atleta" data-passo="atleta">
+      <div class="passo-cab"><h1>Atleta</h1><p>Escolha o atleta na barra de cima e carregue os dados do TrainingPeaks e do Lab.</p></div>
+      <div id="perfil" class="oculto">
+        <div class="grid-info">
+          <div class="info"><label>Volume atual</label><b id="i-volume">—</b><small>média das últimas 4 semanas</small></div>
+          <div class="info"><label>Maior longo</label><b id="i-longo">—</b><small>últimas 8 semanas</small></div>
+          <div class="info"><label>Pace fácil</label><b id="i-facil">—</b><small>rodagens recentes</small></div>
+          <div class="info"><label>Corridas lidas</label><b id="i-corridas">—</b><small>últimas 10 semanas</small></div>
+          <div class="info"><label>Dias que treina</label><b id="i-dias">—</b><small id="i-dias-n">pela rotina recente</small></div>
+          <div class="info oculto" id="c-ctl"><label>Forma (CTL)</label><b id="i-ctl">—</b><small id="i-ctl-data">do Lab</small></div>
+          <div class="info oculto" id="c-tsb"><label>Frescor (TSB)</label><b id="i-tsb">—</b><small>positivo = descansado</small></div>
+        </div>
+        <div id="bloco-ativo" class="aviso oculto"></div>
+
+        <div class="limiar-box">
+          <h2>Pace de limiar</h2>
+          <p class="dica">Base de todas as zonas do bloco.</p>
+          <div class="opcoes-limiar">
+            <label class="op"><input type="radio" name="limiar" value="estimado" checked>
+              <span><b id="l-est">—</b><small id="l-est-fonte">estimado pelo histórico</small></span></label>
+            <label class="op"><input type="radio" name="limiar" value="cadastrado">
+              <span><b id="l-cad">—</b><small>cadastrado no perfil do TP</small></span></label>
+            <label class="op"><input type="radio" name="limiar" value="manual">
+              <span><input id="l-manual" placeholder="6:13" size="6" aria-label="Pace de limiar manual"><small>definir na mão</small></span></label>
+          </div>
+          <div id="aviso-limiar" class="aviso oculto"></div>
+          <table id="tabela-zonas" class="zonas"></table>
+        </div>
+      </div>
+      <div class="vazio" id="vazio-atleta">
+        <svg><use href="#ic-atleta"/></svg>
+        <b>Nenhum atleta carregado</b>
+        <span>Busque pelo nome na barra de cima e clique em Carregar.</span>
+      </div>
+    </section>
+
+    <!-- 2. BLOCO -->
+    <section class="passo oculto" id="sec-bloco" data-passo="bloco">
+      <div class="passo-cab"><h1>Bloco</h1><p>Datas, prova e os volumes que o motor vai perseguir.</p></div>
+
+      <div class="campos">
+        <div class="grupo">
+          <h2>Modalidade</h2>
+          <div class="modal-sel" role="radiogroup" aria-label="Modalidade do bloco" id="modalidade">
+            <label><input type="radio" name="modalidade" value="corrida"><span>Corrida</span></label>
+            <label><input type="radio" name="modalidade" value="mista" checked><span>Corrida e força</span></label>
+            <label><input type="radio" name="modalidade" value="forca"><span>Só força</span></label>
+          </div>
+          <p class="dica" style="margin:6px 0 0">Define quais treinos aparecem na grade e na sugestão das semanas.</p>
+        </div>
+
+        <div class="grupo" id="grupo-forca-obj">
+          <h2>Objetivo da força</h2>
+          <div class="modal-sel" role="radiogroup" aria-label="Objetivo do treino de força" id="forca-objetivo">
+            <label><input type="radio" name="forca-objetivo" value="performance" checked><span>Performance esportiva</span></label>
+            <label><input type="radio" name="forca-objetivo" value="hipertrofia"><span>Hipertrofia</span></label>
+          </div>
+          <p class="dica" style="margin:6px 0 0">Performance mantém as séries pesadas e curtas do corredor. Hipertrofia passa os exercícios principais para 4 séries de 10 a 12 repetições. Core, descarga e a sessão da semana de prova não mudam.</p>
+        </div>
+
+        <div class="grupo">
+          <h2>Período</h2>
+          <div class="linha">
+            <label>Início <input type="date" id="inicio" value="{{ inicio_padrao }}"></label>
+            <label>Fim <input type="date" id="fim" value="{{ fim_padrao }}"></label>
+            <label>Maior longo <input type="number" id="longo-max" step="0.5" min="3"
+              title="Teto do longo do bloco: os longos sobem 2 a 4 km de um para o outro, do ponto de partida até bater nesse valor no último longo de carga antes do polimento"><u>km</u></label>
+            <label>Maior semana <input type="number" id="semana-max" step="1" min="10" placeholder="—"
+              title="Volume de corrida da maior semana do bloco: as semanas sobem progressivamente até bater exatamente nesse total na maior semana de carga (taper e polimento ficam de fora)"><u>km</u></label>
+            <label>Menor semana <input type="number" id="semana-min" step="1" min="0" placeholder="—"
+              title="Nenhuma semana de Base ou Específico fica abaixo desse total, nem a semana leve; o ciclo começa nele ou acima (polimento, prova e pós-prova ficam de fora)"><u>km</u></label>
+            <label>Mínimo por treino <input type="number" id="min-km" step="0.5" min="0" placeholder="—"
+              title="Nenhum treino de corrida fica abaixo desse km (a semana da prova e a seguinte ficam de fora)"><u>km</u></label>
+          </div>
+          <div class="linha" style="margin-top:8px">
+            <label>Ciclo <select id="fases-ciclo"
+              title="Base, Específico e Base + Específico: sem prova e sem polimento. Completo: Base, Específico, Polimento e a prova (no Dia da caixa Prova, se cair no período; senão no Fim)">
+              <option value="base">Base</option>
+              <option value="especifico">Específico</option>
+              <option value="base_especifico">Base + Específico</option>
+              <option value="completo">Completo: Base, Específico, Polimento e Prova</option>
+            </select></label>
+            <button type="button" id="btn-ciclo-periodo" class="secundario"
+              title="Cria a periodização do atleta do Início ao Fim, com a maior semana, o maior longo e o mínimo por treino daqui">Abrir ciclo no período</button>
+          </div>
+          <p class="dica" id="dica-partida" style="margin:6px 0 0"></p>
+        </div>
+
+        <div class="grupo">
+          <h2>Prova</h2>
+          <div class="linha">
+            <label>Objetivo <select id="prova">
+              <option value="">—</option><option value="5k">5 km</option>
+              <option value="10k">10 km</option><option value="21k">21 km</option>
+              <option value="42k">42 km</option>
+            </select></label>
+            <label>No calendário <select id="prova-cal"><option value="">— carregue o atleta —</option></select></label>
+            <label>Dia <input type="date" id="prova-data"
+              title="Marca a prova nesse dia: véspera vira ativação, os 5 dias antes recebem corte de volume e os 2 seguintes viram rodagem leve"></label>
+            <label>Nome <input type="text" id="prova-nome" placeholder="opcional"></label>
+            <button type="button" id="btn-ciclo-prova" class="secundario" disabled
+              title="Leva o Fim do bloco até o dia da prova e monta as semanas até lá"><svg><use href="#ic-bandeira"/></svg>Abrir ciclo até a prova</button>
+          </div>
+          <label style="margin-top:8px;display:inline-flex;align-items:center;gap:8px">Reteste de limiar
+            <select id="teste-limiar" title="Teste de limiar 30' a cada 6 a 8 semanas, longe da prova. O treinador compara o resultado com o limiar cadastrado.">
+              <option value="auto">automático (a cada 6–8 semanas)</option>
+              <option value="nenhum">nenhum</option>
+              <option value="1">semana 1</option><option value="2">semana 2</option><option value="3">semana 3</option>
+              <option value="4">semana 4</option><option value="5">semana 5</option><option value="6">semana 6</option>
+            </select></label>
+          <label class="check" style="margin-top:8px" title="Simula CTL/ATL com os treinos gerados e ajusta o corte do polimento para chegar na prova A com a forma (TSB) na faixa alvo"><input type="checkbox" id="taper-ctl" checked> Polimento calibrado pelo CTL real do atleta</label>
+          <div id="provas-bloco" class="provas-bloco oculto"></div>
+        </div>
+
+        <div class="grupo" id="grupo-progressao">
+          <h2>Progressão do ciclo</h2>
+          <div class="linha">
+            <label>Aumento por semana <input type="number" id="progressao" value="10" step="1" min="0" max="25"
+              title="Teto do aumento de km entre duas semanas de carga seguidas (a semana leve não conta degrau)"><u>%</u></label>
+            <label>Recuperação a cada <input type="number" id="recup-cada" value="4" step="1" min="0" max="8"><u>sem</u></label>
+            <label>Corte na recuperação <input type="number" id="recup-corte" value="25" step="1" min="0" max="60"><u>%</u></label>
+          </div>
+          <label class="check" style="margin-top:8px" title="Nenhuma semana leve no ciclo: o volume sobe direto até o pico"><input type="checkbox" id="sem-recup"> Sem semana de recuperação</label>
+          <p class="dica" id="progressao-status" style="margin:6px 0 0">Vale para a periodização do atleta: mudou aqui, o plano inteiro é refeito.</p>
+        </div>
+
+        <div id="plano-box" class="plano-box oculto"></div>
+
+        <details class="grupo avancado">
+          <summary>Ponto de partida <small>calibrado pelo histórico</small></summary>
+          <div class="linha">
+            <label>Longo inicial <input type="number" id="b-longo" step="0.5"><u>km</u></label>
+            <label>Limiar inicial <input type="number" id="b-limiar" step="1"><u>min na zona</u></label>
+            <label>VO2max inicial <input type="number" id="b-vo2" step="30"><u>seg na zona</u></label>
+            <label>Rodagem inicial <input type="number" id="b-rodagem" step="5"><u>min</u></label>
+          </div>
+        </details>
+      </div>
+      <div class="passo-pe"><button class="primario" data-ir="semanas">Montar as semanas →</button></div>
+    </section>
+
+    <!-- 3. SEMANAS -->
+    <section class="passo" id="passo-semanas" data-passo="semanas">
+      <div class="passo-cab">
+        <h1>Semanas</h1>
+        <p>Uma linha por semana do ciclo, um treino por célula. Passe o mouse na célula para fixar a estrutura ou deixar uma nota para o atleta.</p>
+      </div>
+      <div class="barra-grade">
+        <span class="rotulo">Dias de treino</span>
+        <span id="chips-dias" class="chips-dias"></span>
+        <span class="espaco"></span>
+        <button class="secundario mini" id="sugerir" title="Preenche a grade com uma sugestão variada por fase (os dias que você mexeu à mão ficam)">Aplicar sugestão</button>
+        <button class="ghost mini" id="soltar-manuais" title="Os dias marcados à mão voltam a seguir a sugestão">Soltar mudanças manuais</button>
+        <button class="secundario mini" id="so-forca" title="Preenche a grade só com força nos dias do atleta">Só força</button>
+      </div>
+      <div class="grade-wrap"><div id="dias"></div></div>
+      <div class="passo-pe">
+        <span class="dica" id="dica-gerar">O motor monta cada sessão pelas zonas do atleta e pela periodização.</span>
+        <button id="gerar" class="primario">Gerar prévia</button>
+      </div>
+    </section>
+
+    <!-- 4. PRÉVIA -->
+    <section class="passo oculto" id="sec-previa" data-passo="previa">
+      <div class="passo-cab"><h1>Prévia</h1><p>O bloco inteiro como calendário. Clique em qualquer treino para trocar ou editar antes de publicar.</p></div>
+      <div id="resumo-semanas" class="semanas"></div>
+      <div id="pmc-linha" class="pmc-linha oculto"></div>
+      <div id="avisos-seq" class="aviso conflitos oculto"></div>
+      <div id="conflitos" class="aviso oculto"></div>
+      <div id="lista-treinos"></div>
+      <div class="rodape-acoes">
+        <label class="check"><input type="checkbox" id="substituir" checked> Apagar os planejados que já existem nessas datas</label>
+        <span class="espaco"></span>
+        <button id="publicar" class="secundario"><svg><use href="#ic-publicar"/></svg>Publicar no TrainingPeaks</button>
+      </div>
+      <div id="resultado" class="oculto"></div>
+    </section>
+  </main>
+
+</div>
+
+<div id="carregando" class="overlay oculto"><div class="spinner"></div><span id="carregando-txt">carregando…</span></div>
+<script src="/static/app.js?v={{ v }}"></script>
+<script src="/static/shell.js?v={{ v }}"></script>
+</body>
+</html>

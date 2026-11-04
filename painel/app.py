@@ -727,10 +727,15 @@ with st.sidebar:
     st.selectbox("Ir para atleta", _srch_names, key="goto_ath", on_change=_goto_cb)
     st.toggle("Tema claro", key="theme_light")
     st.markdown('<div style="margin-top:10px">'
-                f'<a class="link-app" href="{"./montar" if NUVEM else "http://127.0.0.1:8640"}" target="{"_self" if NUVEM else "_blank"}">'
+                f'<a class="link-app" href="{"./gerador" if NUVEM else "http://127.0.0.1:8640"}" target="{"_self" if NUVEM else "_blank"}">'
                 '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/>'
                 '<path d="M19 14v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>'
-                'Gerador de Treinos</a></div>', unsafe_allow_html=True)
+                'Gerador de Treinos</a>'
+                + ('<a class="link-app" href="./montar" target="_self" style="margin-top:6px">'
+                   '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/>'
+                   '<path d="M19 14v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>'
+                   'Montar treino (celular)</a>' if NUVEM else '')
+                + '</div>', unsafe_allow_html=True)
 try:
     _sb=scoreboard(dt.date.today().isoformat())
     _p=_sb.get("prova")

@@ -122,6 +122,7 @@ if _e["v"] != nuvem.versao_local():
     _e["v"] = nuvem.versao_local()
 
 pg = st.navigation([st.Page(os.path.join(PAINEL, "app.py"), title="Painel", default=True),
+                    st.Page("gerador.py", title="Gerador de Treinos", url_path="gerador"),
                     st.Page("montar.py", title="Montar treino", url_path="montar")],
                    position="hidden")
 pg.run()
