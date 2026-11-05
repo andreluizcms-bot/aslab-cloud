@@ -76,6 +76,14 @@ window.__QS = __QS__;
       if (Date.now() - ini > 900000) throw new Error("O Mac não respondeu a tempo.");
     }
   };
+  document.addEventListener("click", (e) => {   // o iframe não pode trocar a página de fora; um link criado lá dentro pode
+    const a = e.target.closest && e.target.closest('a[target="_parent"]');
+    if (!a) return;
+    e.preventDefault();
+    const d = window.parent.document, l = d.createElement("a");
+    l.href = a.href; l.target = "_self";
+    d.body.appendChild(l); l.click(); l.remove();
+  }, true);
   try {                     // a tela ocupa a página inteira, como no Mac
     const f = window.frameElement;
     if (f) f.style.cssText += ";position:fixed;inset:0;width:100%;height:100%;z-index:999990;border:0;background:#0a2026";

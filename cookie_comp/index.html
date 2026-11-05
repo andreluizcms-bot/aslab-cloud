@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<script>
+// O proxy do Streamlit Cloud tira os cookies antes do servidor (st.context.cookies vem vazio).
+// Aqui o cookie de login é lido no navegador e devolvido ao streamlit_app.py; "" = não tem.
+function avisa(tipo, dados) {
+  window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: tipo }, dados), "*");
+}
+var achado = document.cookie.match(/(?:^|;\s*)aslab_k=([^;]*)/);
+avisa("streamlit:componentReady", { apiVersion: 1 });
+avisa("streamlit:setFrameHeight", { height: 0 });
+avisa("streamlit:setComponentValue", { value: achado ? achado[1] : "", dataType: "json" });
+</script>

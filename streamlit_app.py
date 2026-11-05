@@ -11,6 +11,7 @@ Secrets (share.streamlit.io → Settings → Secrets):
 """
 import os, sys, hashlib
 import streamlit as st
+import streamlit.components.v1 as _componentes
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 PAINEL = os.path.join(AQUI, "painel")
@@ -52,21 +53,12 @@ def _icone_aba(pasta_png):
             % _json.dumps(js), height=0)
 _icone_aba(os.path.join(PAINEL, "assets", "png"))
 
-# SONDA TEMPORÁRIA: mostra só os NOMES dos cookies que chegam ao servidor
-if st.query_params.get("diag") == "cookie":
-    import streamlit.components.v1 as _c0
-    _c0.html("""<script>try{var W=window.top||window.parent;var sec=(W.location.protocol==='https:')?'; Secure':'';
-    W.document.cookie='aslab_diag=1; max-age=600; path=/; SameSite=Lax'+sec;}catch(e){}</script>""", height=0)
-    st.write("NOMES_COOKIES", sorted(st.context.cookies.keys()))
-    st.stop()
-
 # ---------- senha (mesmo cookie do app antigo: quem já entrou não digita de novo) ----------
 def _tok(pw):
     return hashlib.sha256(("aslab|" + pw).encode()).hexdigest()[:20]
 
 def _lembrar(tok):
-    import streamlit.components.v1 as _c
-    _c.html(f"""<script>
+    _componentes.html(f"""<script>
       try {{
         var W=window.top||window.parent;
         var sec=(W.location.protocol==='https:')?'; Secure':'';
@@ -74,30 +66,44 @@ def _lembrar(tok):
       }} catch(e) {{}}
     </script>""", height=0)
 
+_cookie_navegador = _componentes.declare_component("lab_cookie", path=os.path.join(AQUI, "cookie_comp"))
+
+# SONDA TEMPORÁRIA: mostra só o tamanho do cookie lido no navegador
+if st.query_params.get("diag") == "componente":
+    _v = _cookie_navegador(default=None, key="lab_cookie_diag")
+    st.write("LIDO", "sem resposta" if _v is None else len(_v))
+    st.stop()
+
 def _gate():
     pw = _sec("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
     if not pw: return True
     tok = _tok(pw)
-    try: cookie_ok = st.context.cookies.get("aslab_k") == tok
-    except Exception: cookie_ok = False
-    if cookie_ok or st.query_params.get("k") == tok or st.session_state.get("auth_ok"):
+    ss = st.session_state
+    if not ss.get("auth_ok"):
+        if _cookie_navegador(default=None, key="lab_cookie") == tok:
+            ss["auth_ok"] = True
+        elif st.query_params.get("k") == tok:
+            ss["auth_ok"] = ss["gravar_cookie"] = True
+    if ss.get("auth_ok"):
         # grava aqui, numa execução que vai até o fim: logo antes de um st.rerun() o iframe
         # some sem rodar, o cookie não fica e o próximo carregamento de página pede a senha
-        if not cookie_ok: _lembrar(tok)
-        st.session_state["auth_ok"] = True
+        if ss.get("gravar_cookie"): _lembrar(tok)
         return True
     st.markdown("""<style>
       .stApp{background:linear-gradient(180deg,#0a2026,#07171d)}
       header,[data-testid="stSidebar"],footer{display:none!important}
       .gate{margin:14vh auto 18px;text-align:center;color:#eaf3f4;font-family:Inter,system-ui,sans-serif}
       .gate b{font-size:2.2rem;letter-spacing:.02em} .gate span{color:#ee6c4d;letter-spacing:.3em;font-size:.8rem}
+      /* quem já tem o cookie entra direto: o campo só aparece se o componente não reconhecer */
+      .stTextInput,.stButton{animation:lab-ap .15s 1.2s both}
+      @keyframes lab-ap{from{opacity:0}to{opacity:1}}
     </style><div class="gate"><b>AS</b> ENDURANCE <span>LAB</span></div>""", unsafe_allow_html=True)
     c = st.columns([1, 1.2, 1])[1]
     with c:
         p = st.text_input("Senha", type="password", label_visibility="collapsed", placeholder="Senha do painel")
         if st.button("Entrar", type="primary", use_container_width=True):
             if p == pw:
-                st.session_state["auth_ok"] = True
+                ss["auth_ok"] = ss["gravar_cookie"] = True
                 st.rerun()
             else:
                 st.error("Senha incorreta.")
