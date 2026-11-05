@@ -68,43 +68,43 @@ def _lembrar(tok):
 
 _cookie_navegador = _componentes.declare_component("lab_cookie", path=os.path.join(AQUI, "cookie_comp"))
 
-# SONDA TEMPORÁRIA: mostra só o tamanho do cookie lido no navegador
-if st.query_params.get("diag") == "componente":
-    _v = _cookie_navegador(default=None, key="lab_cookie_diag")
-    st.write("LIDO", "sem resposta" if _v is None else len(_v))
-    st.stop()
-
 def _gate():
     pw = _sec("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
     if not pw: return True
     tok = _tok(pw)
     ss = st.session_state
+    caixa = None
     if not ss.get("auth_ok"):
-        if _cookie_navegador(default=None, key="lab_cookie") == tok:
+        lido = _cookie_navegador(default=None, key="lab_cookie")
+        caixa = st.empty()      # some já ao entrar: o campo não fica na tela enquanto a página carrega
+        if lido == tok:
             ss["auth_ok"] = True
         elif st.query_params.get("k") == tok:
             ss["auth_ok"] = ss["gravar_cookie"] = True
     if ss.get("auth_ok"):
+        if caixa: caixa.empty()
         # grava aqui, numa execução que vai até o fim: logo antes de um st.rerun() o iframe
         # some sem rodar, o cookie não fica e o próximo carregamento de página pede a senha
         if ss.get("gravar_cookie"): _lembrar(tok)
         return True
-    st.markdown("""<style>
+    tela = caixa.container()
+    tela.markdown("""<style>
       .stApp{background:linear-gradient(180deg,#0a2026,#07171d)}
       header,[data-testid="stSidebar"],footer{display:none!important}
       .gate{margin:14vh auto 18px;text-align:center;color:#eaf3f4;font-family:Inter,system-ui,sans-serif}
       .gate b{font-size:2.2rem;letter-spacing:.02em} .gate span{color:#ee6c4d;letter-spacing:.3em;font-size:.8rem}
-      /* quem já tem o cookie entra direto: o campo só aparece se o componente não reconhecer */
-      .stTextInput,.stButton{animation:lab-ap .15s 1.2s both}
+      /* quem já tem o cookie entra direto: o campo espera o componente responder (os 6 s são se ele nunca responder) */
+      .stTextInput,.stButton{ESPERA}
       @keyframes lab-ap{from{opacity:0}to{opacity:1}}
-    </style><div class="gate"><b>AS</b> ENDURANCE <span>LAB</span></div>""", unsafe_allow_html=True)
-    c = st.columns([1, 1.2, 1])[1]
+    </style><div class="gate"><b>AS</b> ENDURANCE <span>LAB</span></div>""".replace(
+        "ESPERA", "animation:lab-ap .15s 6s both" if lido is None else ""), unsafe_allow_html=True)
+    c = tela.columns([1, 1.2, 1])[1]
     with c:
         p = st.text_input("Senha", type="password", label_visibility="collapsed", placeholder="Senha do painel")
         if st.button("Entrar", type="primary", use_container_width=True):
             if p == pw:
                 ss["auth_ok"] = ss["gravar_cookie"] = True
-                st.rerun()
+                caixa.empty(); st.rerun()
             else:
                 st.error("Senha incorreta.")
     return False
