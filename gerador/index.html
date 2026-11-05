@@ -63,16 +63,17 @@
     <dl>
       <div><dt>Semanas</dt><dd id="res-semanas">—</dd></div>
       <div><dt>Período</dt><dd id="res-periodo">—</dd></div>
-      <div><dt>Prova</dt><dd id="res-prova">—</dd></div>
-      <div><dt>Maior longo</dt><dd id="res-longo">—</dd></div>
-      <div><dt>Maior semana</dt><dd id="res-semana">—</dd></div>
+      <div class="corrida-only"><dt>Prova</dt><dd id="res-prova">—</dd></div>
+      <div class="corrida-only"><dt>Maior longo</dt><dd id="res-longo">—</dd></div>
+      <div class="corrida-only"><dt>Maior semana</dt><dd id="res-semana">—</dd></div>
+      <div class="forca-only"><dt>Objetivo</dt><dd id="res-objetivo">—</dd></div>
       <div><dt>Dias/semana</dt><dd id="res-dias">—</dd></div>
       <div><dt>Força</dt><dd id="res-forca">—</dd></div>
-      <div><dt>Zonas</dt><dd id="res-zonas">—</dd></div>
+      <div class="corrida-only"><dt>Zonas</dt><dd id="res-zonas">—</dd></div>
     </dl>
     <div class="res-previa oculto" id="res-previa">
       <dt>Prévia</dt>
-      <dd><b id="res-p-km">—</b> km · <b id="res-p-n">—</b> treinos</dd>
+      <dd><span class="corrida-only"><b id="res-p-km">—</b> km · </span><b id="res-p-n">—</b> treinos</dd>
     </div>
   </aside>
 
@@ -122,7 +123,7 @@
 
     <!-- 2. BLOCO -->
     <section class="passo oculto" id="sec-bloco" data-passo="bloco">
-      <div class="passo-cab"><h1>Bloco</h1><p>Datas, prova e os volumes que o motor vai perseguir.</p></div>
+      <div class="passo-cab"><h1>Bloco</h1><p class="corrida-only">Datas, prova e os volumes que o motor vai perseguir.</p><p class="forca-only">Datas e fases da periodização de força.</p></div>
 
       <div class="campos">
         <div class="grupo">
@@ -141,7 +142,8 @@
             <label><input type="radio" name="forca-objetivo" value="performance" checked><span>Performance esportiva</span></label>
             <label><input type="radio" name="forca-objetivo" value="hipertrofia"><span>Hipertrofia</span></label>
           </div>
-          <p class="dica" style="margin:6px 0 0">Performance mantém as séries pesadas e curtas do corredor. Hipertrofia passa os exercícios principais para 4 séries de 10 a 12 repetições. Core, descarga e a sessão da semana de prova não mudam.</p>
+          <p class="dica corrida-only" style="margin:6px 0 0">Performance mantém as séries pesadas e curtas do corredor. Hipertrofia passa os exercícios principais para 4 séries de 10 a 12 repetições. Core, descarga e a sessão da semana de prova não mudam.</p>
+          <p class="dica forca-only" style="margin:6px 0 0">Performance segue as séries e repetições da fase de cada semana. Hipertrofia fica em 4 séries de 10 a 12 repetições nos exercícios principais.</p>
         </div>
 
         <div class="grupo">
@@ -149,16 +151,16 @@
           <div class="linha">
             <label>Início <input type="date" id="inicio" value="{{ inicio_padrao }}"></label>
             <label>Fim <input type="date" id="fim" value="{{ fim_padrao }}"></label>
-            <label>Maior longo <input type="number" id="longo-max" step="0.5" min="3"
+            <label class="corrida-only">Maior longo <input type="number" id="longo-max" step="0.5" min="3"
               title="Teto do longo do bloco: os longos sobem 2 a 4 km de um para o outro, do ponto de partida até bater nesse valor no último longo de carga antes do polimento"><u>km</u></label>
-            <label>Maior semana <input type="number" id="semana-max" step="1" min="10" placeholder="—"
+            <label class="corrida-only">Maior semana <input type="number" id="semana-max" step="1" min="10" placeholder="—"
               title="Volume de corrida da maior semana do bloco: as semanas sobem progressivamente até bater exatamente nesse total na maior semana de carga (taper e polimento ficam de fora)"><u>km</u></label>
-            <label>Menor semana <input type="number" id="semana-min" step="1" min="0" placeholder="—"
+            <label class="corrida-only">Menor semana <input type="number" id="semana-min" step="1" min="0" placeholder="—"
               title="Nenhuma semana de Base ou Específico fica abaixo desse total, nem a semana leve; o ciclo começa nele ou acima (polimento, prova e pós-prova ficam de fora)"><u>km</u></label>
-            <label>Mínimo por treino <input type="number" id="min-km" step="0.5" min="0" placeholder="—"
+            <label class="corrida-only">Mínimo por treino <input type="number" id="min-km" step="0.5" min="0" placeholder="—"
               title="Nenhum treino de corrida fica abaixo desse km (a semana da prova e a seguinte ficam de fora)"><u>km</u></label>
           </div>
-          <div class="linha" style="margin-top:8px">
+          <div class="linha corrida-only" style="margin-top:8px">
             <label>Ciclo <select id="fases-ciclo"
               title="Base, Específico e Base + Específico: sem prova e sem polimento. Completo: Base, Específico, Polimento e a prova (no Dia da caixa Prova, se cair no período; senão no Fim)">
               <option value="base">Base</option>
@@ -169,10 +171,20 @@
             <button type="button" id="btn-ciclo-periodo" class="secundario"
               title="Cria a periodização do atleta do Início ao Fim, com a maior semana, o maior longo e o mínimo por treino daqui">Abrir ciclo no período</button>
           </div>
-          <p class="dica" id="dica-partida" style="margin:6px 0 0"></p>
+          <p class="dica corrida-only" id="dica-partida" style="margin:6px 0 0"></p>
         </div>
 
-        <div class="grupo">
+        <div class="grupo forca-only">
+          <h2>Periodização de força</h2>
+          <div class="linha">
+            <label>Semana de descarga a cada <input type="number" id="forca-descarga" value="4" step="1" min="0" max="12"
+              title="A semana vira Descarga: menos séries e carga leve. Zero deixa o bloco sem descarga"><u>sem</u></label>
+          </div>
+          <p class="dica" style="margin:6px 0 10px">Escolha a fase de cada semana. O foco marcado nas Semanas não muda: a fase define as séries e repetições dos exercícios principais.</p>
+          <div id="plano-forca"></div>
+        </div>
+
+        <div class="grupo corrida-only">
           <h2>Prova</h2>
           <div class="linha">
             <label>Objetivo <select id="prova">
@@ -198,7 +210,7 @@
           <div id="provas-bloco" class="provas-bloco oculto"></div>
         </div>
 
-        <div class="grupo" id="grupo-progressao">
+        <div class="grupo corrida-only" id="grupo-progressao">
           <h2>Progressão do ciclo</h2>
           <div class="linha">
             <label>Aumento por semana <input type="number" id="progressao" value="10" step="1" min="0" max="25"
@@ -210,9 +222,9 @@
           <p class="dica" id="progressao-status" style="margin:6px 0 0">Vale para a periodização do atleta: mudou aqui, o plano inteiro é refeito.</p>
         </div>
 
-        <div id="plano-box" class="plano-box oculto"></div>
+        <div id="plano-box" class="plano-box corrida-only oculto"></div>
 
-        <details class="grupo avancado">
+        <details class="grupo avancado corrida-only">
           <summary>Ponto de partida <small>calibrado pelo histórico</small></summary>
           <div class="linha">
             <label>Longo inicial <input type="number" id="b-longo" step="0.5"><u>km</u></label>
@@ -241,21 +253,22 @@
       </div>
       <div class="grade-wrap"><div id="dias"></div></div>
       <div class="passo-pe">
-        <span class="dica" id="dica-gerar">O motor monta cada sessão pelas zonas do atleta e pela periodização.</span>
+        <span class="dica corrida-only" id="dica-gerar">O motor monta cada sessão pelas zonas do atleta e pela periodização.</span>
+        <span class="dica forca-only">O motor monta cada sessão pelo foco marcado e pela fase de força da semana.</span>
         <button id="gerar" class="primario">Gerar prévia</button>
       </div>
     </section>
 
     <!-- 4. PRÉVIA -->
     <section class="passo oculto" id="sec-previa" data-passo="previa">
-      <div class="passo-cab"><h1>Prévia</h1><p>O bloco inteiro como calendário. Clique em qualquer treino para trocar ou editar antes de publicar.</p></div>
+      <div class="passo-cab"><h1>Prévia</h1><p class="corrida-only">O bloco inteiro como calendário. Clique em qualquer treino para trocar ou editar antes de publicar.</p><p class="forca-only">O bloco inteiro como calendário. Em cada dia, abra Exercícios para trocar, ajustar, incluir ou tirar exercícios antes de publicar.</p></div>
       <div id="resumo-semanas" class="semanas"></div>
       <div id="pmc-linha" class="pmc-linha oculto"></div>
       <div id="avisos-seq" class="aviso conflitos oculto"></div>
       <div id="conflitos" class="aviso oculto"></div>
       <div id="lista-treinos"></div>
       <div class="rodape-acoes">
-        <label class="check"><input type="checkbox" id="substituir" checked> Apagar os planejados que já existem nessas datas</label>
+        <label class="check"><input type="checkbox" id="substituir" checked> Substituir os planejados do mesmo tipo nessas datas (força nunca apaga corrida)</label>
         <span class="espaco"></span>
         <button id="publicar" class="secundario"><svg><use href="#ic-publicar"/></svg>Publicar no TrainingPeaks</button>
       </div>

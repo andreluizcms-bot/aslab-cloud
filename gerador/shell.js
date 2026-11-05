@@ -10,11 +10,13 @@
     longo: ["longo", "longo_continuo", "longo_trocas", "longo_bloco", "longo_progressivo", "longo_alternado", "longo_surges"],
     rodagem: ["rodagem", "rodagem_strides", "rodagem_leve"],
     bike: ["bike_rodagem", "bike_intervalado", "bike_longa"],
-    forca: ["forca", "forca_inferior", "forca_superior", "forca_empurrar", "forca_puxar", "forca_core"],
+    forca: ["forca", "forca_inferior", "forca_superior", "forca_empurrar", "forca_puxar", "forca_core",
+      "forca_pliometria", "forca_estab_core", "forca_ativ_gluteo", "forca_ativ_superiores"],
   };
   const catDe = (v) => Object.keys(CAT).find((k) => CAT[k].includes(v)) || "";
   const dados = () => (typeof DADOS !== "undefined" ? DADOS : null);
   const previa = () => (typeof PREVIA !== "undefined" ? PREVIA : null);
+  const soForca = () => typeof modalidade === "function" && modalidade() === "forca";
 
   // ---- passos --------------------------------------------------------------
   const secao = (p) => $(`.passo[data-passo="${p}"]`);
@@ -43,6 +45,7 @@
     $("#carregar").classList.toggle("primario", !temAtleta);
     $("#carregar").classList.toggle("secundario", temAtleta);
     $("#tr-atleta").textContent = temAtleta ? dados().nome || "carregado" : "escolha na barra";
+    $("#tr-bloco").textContent = soForca() ? "datas e fases" : "datas e prova";
     botao("atleta").classList.toggle("feito", temAtleta);
     botao("bloco").classList.toggle("feito", temAtleta && !!$("#inicio").value && !!$("#fim").value);
     const nSel = $$("#dias select[data-dia]").filter((s) => s.value).length;
@@ -83,6 +86,14 @@
       const sel = row.querySelector("select"); if (!sel) return;
       const w = +sel.dataset.semana;
       try {
+        if (soForca()) {               // só força: a linha mostra a fase de força, sem km
+          row.dataset.fase = faseForcaDaSemana(w); row.classList.remove("leve");
+          row.classList.toggle("manual", !!(FASES[w] && FASES[w].forca));
+          delete row.dataset.km;
+          const fo = row.querySelector(".forca-sel"), t = `automática · ${faseForcaAuto(w)}`;
+          if (fo && fo.options[0].textContent !== t) fo.options[0].textContent = t;
+          return;
+        }
         const f = faseDaSemana(w);
         row.dataset.fase = f.fase; row.classList.toggle("leve", !!f.leve);
         row.classList.toggle("manual", !!f.manual);
@@ -115,19 +126,23 @@
   document.addEventListener("atleta-trocado", () => { atualizarTrilho(); irPara("bloco"); pintarResumo(); });
 
   // ---- linha do ciclo -------------------------------------------------------
+  // só força: sem km, a barra indica a carga de cada fase
+  const ALTURA_FASE = { "Adaptação": 40, Base: 55, "Força máxima": 100, "Acumulação": 85,
+    "Pré-competitivo": 70, "Competitivo": 50, Descarga: 25 };
   function pintarCiclo() {
     const faixa = $("#ciclo-faixa");
     if (!dados() || typeof nSemanasPeriodo !== "function" || !$("#inicio").value) { faixa.innerHTML = ""; return; }
     const n = nSemanasPeriodo();
-    const plano = dados().periodizacao;
+    const f0 = soForca();
+    const plano = f0 ? null : dados().periodizacao;
     const ini = segundaDe(new Date($("#inicio").value + "T12:00"));
-    const prova = $("#prova-data").value;
+    const prova = f0 ? "" : $("#prova-data").value;
     const semanas = [];
     for (let w = 1; w <= n; w++) {
       const seg = new Date(ini); seg.setDate(seg.getDate() + 7 * (w - 1));
       const iso = seg.toISOString().slice(0, 10);
       const fim = new Date(seg); fim.setDate(fim.getDate() + 6);
-      const f = faseDaSemana(w);
+      const f = f0 ? { fase: faseForcaDaSemana(w), leve: false } : faseDaSemana(w);
       const sem = plano ? plano.semanas.find((x) => x.inicio === iso) : null;
       const fimIso = fim.toISOString().slice(0, 10);
       const pvs = (typeof provasDoBloco === "function" ? provasDoBloco() : []).filter((p) => p.date >= iso && p.date <= fimIso);
@@ -139,13 +154,15 @@
     const max = Math.max(...semanas.map((s) => s.km), 1);
     const ativa = +(document.activeElement && document.activeElement.dataset && document.activeElement.dataset.semana) || 0;
     faixa.innerHTML = semanas.map((s) => {
-      const h = s.km ? Math.max(18, Math.round(s.km / max * 100)) : (s.leve ? 35 : 60);
+      const h = f0 ? ALTURA_FASE[s.fase] || 60 : s.km ? Math.max(18, Math.round(s.km / max * 100)) : (s.leve ? 35 : 60);
       return `<button type="button" class="ciclo-sem ${s.leve ? "leve" : ""} ${s.w === ativa ? "atual" : ""}"
         data-fase="${s.fase}" data-w="${s.w}" title="Semana ${s.w} · ${s.fase}${s.leve ? " (leve)" : ""}${s.km ? " · " + s.km + " km" : ""}${s.pnomes ? " · " + s.pnomes : ""}">
         <small>${s.w}${s.km ? ` · ${s.km} km` : ""}</small>${s.prova || s.prio === "A" ? '<svg class="flag"><use href="#ic-bandeira"/></svg>' : s.prio ? `<small class="pflag ${s.prio.toLowerCase()}">${s.prio}</small>` : ""}<div class="barra" style="height:${h}%"></div></button>`;
     }).join("");
     const fases = [...new Set(semanas.map((s) => s.fase))];
-    const cor = { Base: "var(--f-base)", "Específico": "var(--f-esp)", Polimento: "var(--f-pol)", Prova: "var(--f-prova)" };
+    const cor = { Base: "var(--f-base)", "Específico": "var(--f-esp)", Polimento: "var(--f-pol)", Prova: "var(--f-prova)",
+      "Adaptação": "var(--teal2)", "Força máxima": "var(--coral)", "Acumulação": "var(--ambar)",
+      "Pré-competitivo": "var(--verde)", "Competitivo": "var(--verm)", "Descarga": "var(--f-leve)" };
     $("#ciclo-legenda").innerHTML = fases.map((f) => `<span><i style="background:${cor[f] || "var(--f-leve)"}"></i>${f}</span>`).join("")
       + (semanas.some((s) => s.leve) ? `<span><i style="background:var(--f-leve)"></i>leve</span>` : "");
   }
@@ -165,7 +182,9 @@
   function pintarResumo() {
     const d = dados();
     $("#res-nome").textContent = d ? (d.nome || $("#atleta option:checked")?.textContent || "—") : "—";
-    $("#res-sub").textContent = d ? (d.periodizacao ? `ciclo: ${d.periodizacao.nome}` : "sem periodização no Lab") : "nenhum atleta";
+    $("#res-sub").textContent = !d ? "nenhum atleta" : soForca() ? "periodização de força"
+      : d.periodizacao ? `ciclo: ${d.periodizacao.nome}` : "sem periodização no Lab";
+    $("#res-objetivo").textContent = d ? (forcaObjetivo() === "hipertrofia" ? "Hipertrofia" : "Performance") : "—";
     const n = (d && typeof nSemanasPeriodo === "function" && $("#inicio").value) ? nSemanasPeriodo() : null;
     $("#res-semanas").textContent = n ?? "—";
     $("#res-periodo").innerHTML = (d && $("#inicio").value) ? `${fmtBR2($("#inicio").value)}<small>até ${fmtBR2($("#fim").value)}</small>` : "—";

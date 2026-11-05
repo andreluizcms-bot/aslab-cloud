@@ -30,6 +30,10 @@ const TIPOS = [
   ["forca_empurrar", "Força · empurrar"],
   ["forca_puxar", "Força · puxar"],
   ["forca_core", "Força · core"],
+  ["forca_pliometria", "Força · pliometria"],
+  ["forca_estab_core", "Força · estabilidade de core"],
+  ["forca_ativ_gluteo", "Força · ativação de glúteo"],
+  ["forca_ativ_superiores", "Força · ativação de membros superiores"],
 ];
 
 let ATLETAS = [], DADOS = null, PREVIA = null;
@@ -64,6 +68,7 @@ let PROVAS_PRIO = {};          // {date: "A"|"B"|"C"|"fora"} escolhido pelo trei
 let PROVAS_KM = {};            // {date: km} digitado pelo treinador: vale mais que o do TP
 const kmDaProva = (p) => (PROVAS_KM[p.date] != null ? PROVAS_KM[p.date] : p.km);
 function provasDoBloco() {
+  if (modalidade() === "forca") return [];     // bloco só de força não olha prova
   const ini = $("#inicio").value, fim = $("#fim").value, a = $("#prova-data").value;
   const out = [];
   if (a) out.push({ date: a, name: $("#prova-nome").value || "Prova", prio: "A" });
@@ -418,7 +423,7 @@ function pintarZonas() {
 
 // ---- periodizacao: quadro editavel + criacao -------------------------------
 const FASES_PLANO = ["Base", "Específico", "Polimento", "Prova"];
-const FASES_FORCA = ["Adaptação", "Base", "Força máxima", "Acumulação", "Pré-competitivo", "Competitivo"];
+const FASES_FORCA = ["Adaptação", "Base", "Força máxima", "Acumulação", "Pré-competitivo", "Competitivo", "Descarga"];
 // fase escolhida à mão por semana: { [semana]: { corrida: "Base"|..., forca: "Adaptação"|... } }
 // (vazio = automático, pela periodização/posição no bloco)
 let FASES = {};
@@ -1054,6 +1059,62 @@ function faseAutomatica(w) {
   return { fase, leve };
 }
 
+// só força: fase de cada semana (espelho de forca.fase_da_semana + a descarga do Bloco)
+function faseForcaAuto(w) {
+  const n = nSemanasPeriodo(), cada = +$("#forca-descarga").value || 0;
+  if (cada > 0 && w % cada === 0 && w < n) return "Descarga";
+  if (n <= 1) return "Base";
+  if (n <= 3) return ["Base", "Força máxima", "Competitivo"][Math.min(w, n) - 1];
+  if (n === 5) return ["Adaptação", "Força máxima", "Acumulação", "Pré-competitivo", "Competitivo"][Math.min(w, 5) - 1];
+  if (n === 4) return ["Base", "Força máxima", "Acumulação", "Competitivo"][Math.min(w, 4) - 1];
+  const fases = FASES_FORCA.slice(0, 6);
+  const qt = [0.15, 0.15, 0.20, 0.20, 0.15, 0.15].map((p) => Math.max(1, Math.round(n * p)));
+  while (qt.reduce((a, b) => a + b) > n) qt[qt.indexOf(Math.max(...qt))]--;
+  while (qt.reduce((a, b) => a + b) < n) qt[2]++;
+  let acc = 0;
+  for (let i = 0; i < 6; i++) { acc += qt[i]; if (w <= acc) return fases[i]; }
+  return "Competitivo";
+}
+const faseForcaDaSemana = (w) => (FASES[w] && FASES[w].forca) || faseForcaAuto(w);
+// espelho de forca.RECEITA_FASE, só para mostrar no quadro
+const RECEITA_FASE = { "Adaptação": "3 séries de 10", "Base": "3 séries de 8", "Força máxima": "4 séries de 5",
+  "Acumulação": "3 séries de 6", "Pré-competitivo": "3 séries de 5", "Competitivo": "3 séries de 6", "Descarga": "2 séries de 8" };
+function pintarPlanoForca() {
+  const box = $("#plano-forca");
+  if (!box || modalidade() !== "forca" || !$("#inicio").value) return;
+  const n = nSemanasPeriodo();
+  const ini = segundaDe(new Date($("#inicio").value + "T12:00"));
+  const hiper = forcaObjetivo() === "hipertrofia";
+  let linhas = "";
+  for (let w = 1; w <= n; w++) {
+    const seg = new Date(ini); seg.setDate(seg.getDate() + 7 * (w - 1));
+    const fase = faseForcaDaSemana(w), manual = FASES[w] && FASES[w].forca;
+    const receita = hiper && fase !== "Descarga" ? "4 séries de 10 a 12" : RECEITA_FASE[fase];
+    linhas += `<tr><td class="p-idx">${w}</td><td class="p-data">${seg.toISOString().slice(0, 10).split("-").reverse().slice(0, 2).join("/")}</td>
+      <td><select class="plano-forca-sel${manual ? " manual" : ""}" data-semana="${w}"><option value="">automática · ${faseForcaAuto(w)}</option>` +
+      FASES_FORCA.map((f) => `<option value="${f}" ${manual === f ? "selected" : ""}>${f}</option>`).join("") +
+      `</select></td><td>${receita}</td></tr>`;
+  }
+  box.innerHTML = `<div class="grade-wrap"><table class="zonas plano-edit"><tr><td>sem</td><td>início</td><td>fase</td><td>exercícios principais</td></tr>${linhas}</table></div>`;
+}
+$("#plano-forca").addEventListener("change", (e) => {
+  if (!e.target.classList.contains("plano-forca-sel")) return;
+  const w = +e.target.dataset.semana;
+  FASES[w] = { ...(FASES[w] || {}) };
+  if (e.target.value) FASES[w].forca = e.target.value; else delete FASES[w].forca;
+  if (!Object.keys(FASES[w]).length) delete FASES[w];
+  const g = document.querySelector(`#dias .forca-sel[data-semana="${w}"]`);
+  if (g) g.value = e.target.value;
+  document.dispatchEvent(new CustomEvent("fases-mudou"));
+});
+document.addEventListener("fases-mudou", pintarPlanoForca);
+document.addEventListener("change", (e) => {
+  if (["inicio", "fim", "forca-descarga"].includes(e.target.id) || e.target.name === "forca-objetivo") {
+    pintarPlanoForca();
+    document.dispatchEvent(new CustomEvent("fases-mudou"));
+  }
+});
+
 function sugestaoGrade(w) {
   let dias = diasEscolhidos();
   w = w || 1;
@@ -1160,6 +1221,7 @@ function montarDias(preservar) {
     (prevF2[s2.dataset.semana2] ??= {})[s2.dataset.dia2] = s2.value;
   });
   const comForca2 = modalidade() === "mista";
+  const soForca = modalidade() === "forca";
   const rotForca = (v) => ((TIPOS.find(([x]) => x === v) || [])[1] || v).replace("Força · ", "").replace(" (academia)", "");
   const forca2Html = (w, i) => {
     if (!comForca2) return "";
@@ -1184,14 +1246,14 @@ function montarDias(preservar) {
   for (let w = 1; w <= n; w++) {
     const fw = FASES[w] || {};
     html += `<div class="sem-cfg"><div class="sem-fase">` +
-      `<label title="Fase do ciclo de corrida nesta semana — muda a sugestão de treinos e o volume">Fase ` +
+      (soForca ? "" : `<label title="Fase do ciclo de corrida nesta semana — muda a sugestão de treinos e o volume">Fase ` +
       `<select class="fase-sel" data-semana="${w}"><option value="">automática</option>` +
       FASES_PLANO.map((f) => `<option value="${f}" ${fw.corrida === f ? "selected" : ""}>${f}</option>`).join("") +
-      `</select></label>` +
-      `<label title="Fase da periodização de força nesta semana — escolhe o treino da biblioteca">Força ` +
+      `</select></label>`) +
+      `<label title="Fase da periodização de força nesta semana — define as séries e repetições">${soForca ? "Fase" : "Força"} ` +
       `<select class="forca-sel" data-semana="${w}"><option value="">automática</option>` +
       FASES_FORCA.map((f) => `<option value="${f}" ${fw.forca === f ? "selected" : ""}>${f}</option>`).join("") +
-      `</select></label><span class="sem-km"></span></div><label>Sem ${w}</label>` +
+      `</select></label>${soForca ? "" : `<span class="sem-km"></span>`}</div><label>Sem ${w}</label>` +
       abrev.map((_, i) => {
         const v = valorDe(w, i);
         const nota = (NOTAS[w] || {})[i];
@@ -1208,7 +1270,7 @@ function montarDias(preservar) {
       }).join("") +
       `<span class="sem-acoes">` +
       (w > 1 ? `<button class="ghost copiar" data-w="${w}" title="Copiar a semana anterior inteira">⧉</button>` : "") +
-      (w < n ? `<button class="ghost copiar-forca" data-w="${w}" title="Copiar só a força desta semana para a semana ${w + 1}">F↓</button>` : "") +
+      (w < n && !soForca ? `<button class="ghost copiar-forca" data-w="${w}" title="Copiar só a força desta semana para a semana ${w + 1}">F↓</button>` : "") +
       `</span></div>`;
   }
   // linha de tempo maximo por dia da semana (vale para todas as semanas)
@@ -1467,7 +1529,8 @@ $("#btn-ciclo-prova").onclick = async () => {
 // -- 3. previa -------------------------------------------------------------
 $("#gerar").onclick = async () => {
   const th = thresholdEscolhido();
-  if (!th) { alert("Defina um pace de limiar valido (ex: 6:13)."); return; }
+  const soForca = modalidade() === "forca";
+  if (!th && !soForca) { alert("Defina um pace de limiar valido (ex: 6:13)."); return; }
 
   const semanas_tipos = {};
   document.querySelectorAll("#dias select[data-dia]").forEach((s) => {
@@ -1519,6 +1582,7 @@ $("#gerar").onclick = async () => {
         progressao_pct: $("#progressao").value === "" ? 10 : +$("#progressao").value,
         seguir_periodizacao: !!(DADOS.periodizacao &&
           $("#seguir-plano") && $("#seguir-plano").checked),
+        ...(soForca ? payloadSoForca() : {}),
       }),
     });
     pintarPrevia();
@@ -1529,6 +1593,22 @@ $("#gerar").onclick = async () => {
     alert("Erro ao gerar: " + e.message);
   } finally { pronto(); }
 };
+
+// bloco só de força: nada de prova, volume, teste de limiar ou plano de corrida no motor
+function payloadSoForca() {
+  const fases = {};
+  for (let w = 1; w <= nSemanasPeriodo(); w++) fases[w] = { forca: faseForcaDaSemana(w) };
+  return { so_forca: true, fases, prova: null, prova_data: null, prova_nome: null, prova_km: null, provas: [],
+    taper_ctl: false, teste_limiar: "nenhum", min_km_treino: null, semana_max_km: null, semana_min_km: null,
+    longo_max_km: null, semana_min: null, sem_recuperacao: true, seguir_periodizacao: false, semanas_forca: {} };
+}
+
+// planejado que este bloco substitui: mesmo dia e mesmo tipo de treino. Vale depois de
+// mover, trocar ou excluir na prévia: força nunca apaga a corrida que já está no plano
+function conflitosValidos() {
+  return (PREVIA.conflitos || []).filter((c) =>
+    PREVIA.sessoes.some((s) => s.data === c.data && !!s.forca === !!c.forca));
+}
 
 function pintarPrevia() {
   $("#resumo-semanas").classList.add("oculto");
@@ -1547,11 +1627,12 @@ function pintarPrevia() {
   }
 
   const c = $("#conflitos");
-  if (PREVIA.conflitos.length) {
-    const n = PREVIA.conflitos.length;
+  const validos = conflitosValidos();
+  if (validos.length) {
+    const n = validos.length;
     c.className = "aviso conflitos";
     c.innerHTML = `<details><summary>${n} treino${n > 1 ? "s" : ""} já planejado${n > 1 ? "s" : ""} nessas datas — as células marcadas em âmbar serão substituídas se "apagar os planejados" ficar marcado</summary>` +
-      `<ul>${PREVIA.conflitos.map((x) => `<li>${x.data.split("-").reverse().join("/")} · ${x.titulo}</li>`).join("")}</ul></details>`;
+      `<ul>${validos.map((x) => `<li>${x.data.split("-").reverse().join("/")} · ${x.titulo}</li>`).join("")}</ul></details>`;
     c.classList.remove("oculto");
   } else c.classList.add("oculto");
 
@@ -1599,11 +1680,11 @@ function pintarPrevia() {
           <b>${s.titulo}${s.fixado ? ' <span class="tag-edit">definido</span>' : ""}${s.editado ? ' <span class="tag-edit">editado</span>' : s.ajustado ? ' <span class="tag-edit">ajustado</span>' : ""}${s.movido ? ' <span class="tag-edit">movido</span>' : ""}${s.teste ? ' <span class="tag-edit teste">teste</span>' : ""}</b>
           ${s.nota ? `<div class="nota-prev" title="${s.nota.replace(/"/g, "&quot;")}"><svg><use href="#ic-nota"/></svg> ${s.nota.length > 46 ? s.nota.slice(0, 46) + "…" : s.nota}</div>` : ""}
           ${s.forca ? corpo : `<div class="num">${s.bike ? "" : s.km + " km · "}${s.minutos} min${lim}</div>${svg(s.desenho)}`}
-          <div class="card-acoes"><button class="ghost trocar" data-i="${i}" title="Trocar ou editar este treino"><svg><use href="#ic-editar"/></svg>editar</button><button class="ghost excluir" data-i="${i}" title="Excluir este treino da prévia" aria-label="Excluir este treino">×</button></div>
+          <div class="card-acoes"><button class="ghost trocar" data-i="${i}" title="${s.forca ? "Editar os exercícios deste dia" : "Trocar ou editar este treino"}"><svg><use href="#ic-editar"/></svg>${s.forca ? "exercícios" : "editar"}</button><button class="ghost excluir" data-i="${i}" title="Excluir este treino da prévia" aria-label="Excluir este treino">×</button></div>
         </div>`;
         }).join("");
         const dataDia = porDia[d][0][0].data;
-        const conflito = (PREVIA.conflitos || []).some((x) => x.data === dataDia);
+        const conflito = validos.some((x) => x.data === dataDia);
         return `<div class="tcell ${conflito ? "conflito" : ""} ${porDia[d].length > 1 ? "duplo" : ""}" data-data="${dataDia}" data-semana="${w}"
           data-recup="${info.recuperacao ? 1 : 0}" data-fase="${info.fase || ""}">${cartoes}
           <button type="button" class="ghost mini add-mais" title="Adicionar outro treino neste dia">+ treino</button></div>`;
@@ -1711,10 +1792,15 @@ const CAMPOS = {
     ["empurrar_a","Força · empurrar A"],["empurrar_b","Força · empurrar B"],
     ["puxar_a","Força · puxar A"],["puxar_b","Força · puxar B"],
     ["core_a","Core A · anti-extensão e anti-rotação"],["core_b","Core B · estabilidade e quadril"],
+    ["plio_a","Força · pliometria A"],["plio_b","Força · pliometria B"],
+    ["estab_a","Força · estabilidade de core A"],["estab_b","Força · estabilidade de core B"],
+    ["gluteo_a","Força · ativação de glúteo A"],["gluteo_b","Força · ativação de glúteo B"],
+    ["ativ_sup_a","Força · ativação de membros superiores A"],["ativ_sup_b","Força · ativação de membros superiores B"],
     ["descarga","Descarga — leve"]]}]],
 };
-["forca_inferior","forca_superior","forca_empurrar","forca_puxar","forca_core"].forEach((t) => { CAMPOS[t] = CAMPOS.forca; });
-const FORCA_TIPOS = ["forca","forca_inferior","forca_superior","forca_empurrar","forca_puxar","forca_core"];
+const FORCA_TIPOS = ["forca","forca_inferior","forca_superior","forca_empurrar","forca_puxar","forca_core",
+  "forca_pliometria","forca_estab_core","forca_ativ_gluteo","forca_ativ_superiores"];
+FORCA_TIPOS.forEach((t) => { CAMPOS[t] = CAMPOS.forca; });
 // modalidade do bloco (Bloco): corrida | mista | forca — filtra os treinos da grade e da sugestão
 function modalidade() { return (document.querySelector('input[name="modalidade"]:checked') || {}).value || "mista"; }
 // objetivo do treino de força do bloco: performance esportiva | hipertrofia
@@ -1859,6 +1945,138 @@ function lerBlocosDoDom(cont) {
   })).filter((b) => b.passos.length);
 }
 
+// ---- exercícios da sessão de força: troca, ajusta, inclui e tira, dia a dia, na prévia ----
+const TIPOS_BLOCO = [["WarmUp", "Aquecimento / ativação"], ["Superset", "Superset"], ["Circuit", "Circuito"],
+  ["SingleExercise", "Exercício único"], ["CoolDown", "Desaquecimento"]];
+const UNIDADES_EX = [["Reps", "reps"], ["RepsPerSide", "reps/lado"], ["Duration", "seg"], ["DistanceMeters", "metros"]];
+let CATALOGO_EX = null;     // {nome: id} dos exercícios do TP
+async function carregarCatalogoEx() {
+  if (CATALOGO_EX) return;
+  const r = await api("/api/forca/exercicios");
+  CATALOGO_EX = Object.fromEntries(r.exercicios.slice().reverse().map((e) => [e.nome, e.id]));
+  let dl = document.getElementById("ex-catalogo");
+  if (!dl) { dl = document.createElement("datalist"); dl.id = "ex-catalogo"; document.body.appendChild(dl); }
+  dl.innerHTML = r.exercicios.map((e) => `<option value="${e.nome.replace(/"/g, "&quot;")}"></option>`).join("");
+}
+const attr = (v) => String(v ?? "").replace(/"/g, "&quot;");
+// parâmetro principal da série: o primeiro com valor, senão o primeiro que existir
+function unidadeDoEx(ex) {
+  const sr = ex.series[0] || {};
+  const com = UNIDADES_EX.find(([p]) => sr[p] != null && sr[p] !== "");
+  return (com || UNIDADES_EX.find(([p]) => p in sr) || UNIDADES_EX[0])[0];
+}
+function valoresDoEx(ex, un) {
+  const vals = ex.series.map((sr) => sr[un] ?? "");
+  return new Set(vals.map(String)).size === 1 ? String(vals[0]) : vals.join(",");
+}
+function exerciciosHtml(blocos) {
+  return blocos.map((b, bi) => `
+    <div class="ed-bloco ed-ex-bloco" data-b="${bi}">
+      <div class="ed-bloco-cab">
+        <select class="bl-tipo" aria-label="Tipo do bloco">${TIPOS_BLOCO.map(([v, t]) =>
+          `<option value="${v}" ${b.tipo === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+        <input class="bl-titulo" value="${attr(b.titulo)}" placeholder="nome do bloco" aria-label="Nome do bloco">
+        <button class="ghost mini bl-mover" data-d="-1" title="Subir o bloco">↑</button>
+        <button class="ghost mini bl-mover" data-d="1" title="Descer o bloco">↓</button>
+        <button class="ghost mini bl-del" title="Tirar o bloco">× bloco</button>
+      </div>
+      ${b.exercicios.map((e, ei) => { const un = unidadeDoEx(e); return `
+      <div class="ed-ex" data-e="${ei}">
+        <input class="ex-nome" list="ex-catalogo" value="${attr(e.nome)}" placeholder="buscar exercício" aria-label="Exercício">
+        <label>séries <input class="ex-series" type="number" min="1" max="20" step="1" value="${e.series.length}"></label>
+        <input class="ex-valor" value="${attr(valoresDoEx(e, un))}" placeholder="8 ou 12,10,8" aria-label="Repetições ou tempo">
+        <select class="ex-unidade" aria-label="Unidade">${UNIDADES_EX.map(([v, t]) =>
+          `<option value="${v}" ${un === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+        <input class="ex-nota" value="${attr(e.notas)}" placeholder="observação" aria-label="Observação do exercício">
+        <button class="ghost mini ex-mover" data-d="-1" title="Subir">↑</button>
+        <button class="ghost mini ex-mover" data-d="1" title="Descer">↓</button>
+        <button class="ghost mini ex-del" title="Tirar o exercício">×</button>
+      </div>`; }).join("")}
+      <button class="ghost mini ex-add">+ exercício</button>
+    </div>`).join("") + `<button class="ghost mini" id="ed-add-bloco-ex">+ bloco</button>`;
+}
+// DOM -> blocos. Carga e formato de cada série ficam: só muda o que aparece nos campos
+function lerExercicios(cont, blocos) {
+  return [...cont.querySelectorAll(".ed-ex-bloco")].map((bl) => {
+    const orig = blocos[+bl.dataset.b];
+    return {
+      tipo: bl.querySelector(".bl-tipo").value, titulo: bl.querySelector(".bl-titulo").value,
+      notas: orig.notas,
+      exercicios: [...bl.querySelectorAll(".ed-ex")].map((l) => {
+        const ex = orig.exercicios[+l.dataset.e];
+        const nome = l.querySelector(".ex-nome").value.trim();
+        const id = nome === ex.nome ? ex.id : (CATALOGO_EX || {})[nome] || null;
+        const un = l.querySelector(".ex-unidade").value;
+        const n = Math.max(+l.querySelector(".ex-series").value || 1, 1);
+        const vals = l.querySelector(".ex-valor").value.split(/[,;\s]+/).filter(Boolean);
+        const base = ex.series.length ? ex.series : [{}];
+        const series = Array.from({ length: n }, (_, k) => {
+          const extras = { ...base[Math.min(k, base.length - 1)] };
+          UNIDADES_EX.forEach(([p]) => delete extras[p]);
+          return { [un]: vals.length ? vals[Math.min(k, vals.length - 1)] : null, ...extras };
+        });
+        return { nome, id, notas: l.querySelector(".ex-nota").value, series, formatos: ex.formatos };
+      }),
+    };
+  });
+}
+function montarEditorExercicios(ed, s, i) {
+  const cont = ed.querySelector("#ed-exercicios");
+  let blocos = JSON.parse(JSON.stringify(s.forca.blocos || []));
+  const pintar = () => { cont.innerHTML = exerciciosHtml(blocos); };
+  pintar();
+  carregarCatalogoEx().catch((e) => console.warn("catálogo de exercícios:", e));
+  const mover = (arr, k, d) => { const j = k + d; if (j >= 0 && j < arr.length) [arr[k], arr[j]] = [arr[j], arr[k]]; };
+  cont.onclick = (ev) => {
+    const t = ev.target;
+    const acao = ["ex-del", "ex-add", "ex-mover", "bl-del", "bl-mover"].find((c) => t.classList.contains(c));
+    if (!acao && t.id !== "ed-add-bloco-ex") return;
+    ev.preventDefault();
+    blocos = lerExercicios(cont, blocos);
+    if (t.id === "ed-add-bloco-ex") {
+      blocos.push({ tipo: "SingleExercise", titulo: "", exercicios: [{ nome: "", series: [{ Reps: 8 }, { Reps: 8 }, { Reps: 8 }], formatos: {} }] });
+      return pintar();
+    }
+    const bi = +t.closest(".ed-ex-bloco").dataset.b, b = blocos[bi];
+    const ei = t.closest(".ed-ex") ? +t.closest(".ed-ex").dataset.e : -1;
+    if (acao === "ex-del") b.exercicios.splice(ei, 1);
+    if (acao === "ex-mover") mover(b.exercicios, ei, +t.dataset.d);
+    if (acao === "bl-del") blocos.splice(bi, 1);
+    if (acao === "bl-mover") mover(blocos, bi, +t.dataset.d);
+    if (acao === "ex-add") {
+      const ult = b.exercicios[b.exercicios.length - 1];
+      b.exercicios.push({ nome: "", series: ult ? ult.series.map((sr) => ({ ...sr })) : [{ Reps: 8 }, { Reps: 8 }, { Reps: 8 }], formatos: ult ? ult.formatos : {} });
+      if (b.tipo === "SingleExercise") b.tipo = "Superset";
+    }
+    pintar();
+  };
+  // Superset e Circuito pedem o mesmo número de séries em todos os exercícios do bloco
+  cont.onchange = (ev) => {
+    if (!ev.target.classList.contains("ex-series")) return;
+    const bl = ev.target.closest(".ed-ex-bloco");
+    if (["Superset", "Circuit"].includes(bl.querySelector(".bl-tipo").value))
+      bl.querySelectorAll(".ex-series").forEach((x) => { x.value = ev.target.value; });
+  };
+  ed.querySelector(".ed-aplicar-exs").onclick = async () => {
+    blocos = lerExercicios(cont, blocos);
+    const faltando = blocos.flatMap((b) => b.exercicios).filter((e) => !e.nome || (CATALOGO_EX && !e.id && !(e.nome in CATALOGO_EX)));
+    if (faltando.length) {
+      alert("Escolha um exercício da lista do TrainingPeaks:\n" + faltando.map((e) => e.nome || "(linha vazia)").join("\n"));
+      pintar(); return;
+    }
+    carregando("montando a sessão...");
+    try {
+      const r = await api("/api/forca/sessao_editada", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ titulo: ed.querySelector("#ed-nome-ex").value, descricao: s.descricao,
+          minutos: +ed.querySelector("#ed-min-ex").value || s.minutos, blocos,
+          template: s.forca.template, objetivo: s.forca.objetivo, tss: s.forca.tss }),
+      });
+      aplicarSessao(i, { ...r.sessao, tipo: s.tipo, nota: s.nota, tempo_max: s.tempo_max, segundo: s.segundo, manual: s.manual });
+    } catch (err) { alert("Erro: " + err.message); pintar(); } finally { pronto(); }
+  };
+}
+
 // REGRA OBRIGATÓRIA: depois de qualquer edição manual, o longo continua sendo o maior
 // treino de corrida da semana (o servidor ajusta os outros, sem passar do teto)
 async function garantirLongo(semanas) {
@@ -1891,7 +2109,7 @@ async function garantirLongo(semanas) {
 function aplicarSessao(i, sessaoNova) {
   const s = PREVIA.sessoes[i];
   PREVIA.sessoes[i] = { ...sessaoNova, data: s.data, dia: s.dia,
-    semana: s.semana, recuperacao: s.recuperacao, editado: true };
+    semana: s.semana, recuperacao: s.recuperacao, editado: true, fase: sessaoNova.fase ?? s.fase };
   recalcSemanas();
   pintarPrevia();
   $("#publicar").disabled = false;
@@ -1923,12 +2141,14 @@ $("#lista-treinos").onclick = (e) => {
   const s = PREVIA.sessoes[i];
   const tipo0 = tipoConcreto(s);
   const temPassos = !!s.structured_workout && !s.bike;
+  const temExs = !!s.forca;
   const ed = document.createElement("div");
   ed.className = "editor";
   ed.innerHTML = `
     <div class="ed-abas">
       ${temPassos ? '<button class="aba ativa" data-aba="passos">Editar passos</button>' : ""}
-      <button class="aba ${temPassos ? "" : "ativa"}" data-aba="modelo">Trocar modelo</button>
+      ${temExs ? '<button class="aba ativa" data-aba="exercicios">Exercícios</button>' : ""}
+      <button class="aba ${temPassos || temExs ? "" : "ativa"}" data-aba="modelo">Trocar modelo</button>
       <button class="aba" data-aba="bib">Biblioteca do TP</button>
     </div>
 
@@ -1941,11 +2161,23 @@ $("#lista-treinos").onclick = (e) => {
       </div>
     </div>` : ""}
 
-    <div data-painel="modelo" class="${temPassos ? "oculto" : ""}">
+    ${temExs ? `<div data-painel="exercicios">
+      <div class="editor-linha ed-titulo-ex">
+        <label>Título <input id="ed-nome-ex" value="${attr(s.titulo)}"></label>
+        <label>Duração <input id="ed-min-ex" type="number" min="5" step="5" value="${s.minutos}"> min</label>
+      </div>
+      <div id="ed-exercicios"></div>
+      <div class="editor-acoes">
+        <button class="primario ed-aplicar-exs">Aplicar neste dia</button>
+        <button class="ghost ed-cancelar">Cancelar</button>
+      </div>
+    </div>` : ""}
+
+    <div data-painel="modelo" class="${temPassos || temExs ? "oculto" : ""}">
       <div class="editor-linha">
         <label>Tipo <select id="ed-tipo">
           ${tiposVisiveis().filter(([v]) => v && v !== "longo").map(([v, t]) =>
-            `<option value="${v}" ${v === tipo0 ? "selected" : ""}>${t}</option>`).join("")}
+            `<option value="${v}" ${v === (s.forca && FORCA_TIPOS.includes(s.tipo) ? s.tipo : tipo0) ? "selected" : ""}>${t}</option>`).join("")}
         </select></label>
         <span id="ed-campos">${camposHtml(tipo0, s)}</span>
       </div>
@@ -1978,6 +2210,7 @@ $("#lista-treinos").onclick = (e) => {
     if (aba.dataset.aba === "bib" && !BIB_PASTAS) carregarPastas(ed);
   };
   ed.querySelectorAll(".ed-cancelar").forEach((b) => (b.onclick = () => ed.remove()));
+  if (temExs) montarEditorExercicios(ed, s, i);
 
   // ---- aba passos: adicionar/remover
   const contPassos = ed.querySelector("#ed-passos");
@@ -2049,6 +2282,7 @@ $("#lista-treinos").onclick = (e) => {
       params[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value;
     });
     if (FORCA_TIPOS.includes(tipo)) params.objetivo = forcaObjetivo();
+    if (modalidade() === "forca") params.fase = s.fase;
     carregando("gerando o treino novo...");
     try {
       const r = await api("/api/sessao", {
@@ -2208,6 +2442,7 @@ function abrirEditorNovo(cel) {
   const linha = cel.closest(".sem-linha");
   const rot = cel.dataset.data.split("-").reverse().slice(0, 2).join("/");
 
+  const tipoNovo = tiposVisiveis().filter(([v]) => v && v !== "longo")[0][0];
   const ed = document.createElement("div");
   ed.className = "editor";
   ed.dataset.e = "novo";
@@ -2222,7 +2457,7 @@ function abrirEditorNovo(cel) {
           ${tiposVisiveis().filter(([v]) => v && v !== "longo").map(([v, t]) =>
             `<option value="${v}">${t}</option>`).join("")}
         </select></label>
-        <span id="ed-campos">${camposHtml("limiar", null)}</span>
+        <span id="ed-campos">${camposHtml(tipoNovo, null)}</span>
       </div>
       <div class="editor-acoes">
         <button class="primario ed-add-modelo">Adicionar neste dia</button>
@@ -2255,7 +2490,9 @@ function abrirEditorNovo(cel) {
 
   ed.querySelector("#ed-tipo").onchange = (ev) => {
     ed.querySelector("#ed-campos").innerHTML = camposHtml(ev.target.value, null);
+    if (FORCA_TIPOS.includes(ev.target.value)) anexarForcaBib(ed);
   };
+  if (FORCA_TIPOS.includes(tipoNovo)) anexarForcaBib(ed);
   ed.querySelector(".ed-add-modelo").onclick = async () => {
     const tipo = ed.querySelector("#ed-tipo").value;
     const params = {};
@@ -2263,6 +2500,7 @@ function abrirEditorNovo(cel) {
       params[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value;
     });
     if (FORCA_TIPOS.includes(tipo)) params.objetivo = forcaObjetivo();
+    if (modalidade() === "forca") params.fase = cel.dataset.fase;
     carregando("gerando o treino novo...");
     try {
       const r = await api("/api/sessao", {
@@ -2337,7 +2575,7 @@ function svg(barras) {
 // -- 4. publicar -----------------------------------------------------------
 $("#publicar").onclick = async () => {
   if (!PREVIA) return;
-  const apagar = $("#substituir").checked ? PREVIA.conflitos.map((c) => c.id) : [];
+  const apagar = $("#substituir").checked ? conflitosValidos().map((c) => c.id) : [];
   const n = PREVIA.sessoes.length;
   if (!n) return;
   const nAp = (PREVIA.avisos || []).length;
@@ -2372,7 +2610,17 @@ $("#publicar").onclick = async () => {
 $("#sugerir").onclick = aplicarSugestao;
 $("#modalidade").addEventListener("change", () => {
   const m = modalidade();
-  $("#so-forca").classList.toggle("oculto", m === "corrida");
+  $("#so-forca").classList.toggle("oculto", m !== "mista");
+  document.body.classList.toggle("modo-forca", m === "forca");
+  // a grade é refeita do zero; a prévia da modalidade anterior não vale mais
+  MANUAIS = {}; FIXOS = {};
+  PREVIA = null;
+  $("#lista-treinos").innerHTML = "";
+  $("#conflitos").classList.add("oculto"); $("#avisos-seq").classList.add("oculto"); $("#pmc-linha").classList.add("oculto");
+  $("#resultado").classList.add("oculto");
+  $("#sec-previa").classList.add("oculto");
+  $("#publicar").disabled = true;
+  pintarPlanoForca();
   if (DADOS) { montarDias(); document.dispatchEvent(new CustomEvent("fases-mudou")); }
 });
 $("#so-forca").onclick = () => {

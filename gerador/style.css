@@ -42,6 +42,9 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--txt3); }
 :focus-visible { outline: 2px solid var(--ambar); outline-offset: 2px; }
 .oculto { display: none !important; }
+/* modalidade "Só força": nada de corrida na tela */
+body.modo-forca .corrida-only { display: none !important; }
+body:not(.modo-forca) .forca-only { display: none !important; }
 svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 u { text-decoration: none; color: var(--txt3); font-size: 12px; }
 small { font-size: 12px; }
@@ -135,6 +138,12 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .ciclo-sem[data-fase="Específico"] .barra { background: var(--f-esp); }
 .ciclo-sem[data-fase="Polimento"] .barra { background: var(--f-pol); }
 .ciclo-sem[data-fase="Prova"] .barra { background: var(--f-prova); }
+.ciclo-sem[data-fase="Adaptação"] .barra { background: var(--teal2); }
+.ciclo-sem[data-fase="Força máxima"] .barra { background: var(--coral); }
+.ciclo-sem[data-fase="Acumulação"] .barra { background: var(--ambar); }
+.ciclo-sem[data-fase="Pré-competitivo"] .barra { background: var(--verde); }
+.ciclo-sem[data-fase="Competitivo"] .barra { background: var(--verm); }
+.ciclo-sem[data-fase="Descarga"] .barra { background: var(--f-leve); }
 .ciclo-sem.leve .barra { background: var(--f-leve); }
 .ciclo-sem:hover .barra, .ciclo-sem.atual .barra { filter: brightness(1.25); }
 .ciclo-sem.atual::after { content: ""; position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: var(--txt); border-radius: 1px; }
@@ -269,7 +278,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .sem-cfg[data-fase="Específico"] .fase-sel { color: var(--f-esp); }
 .sem-cfg[data-fase="Polimento"] .fase-sel { color: var(--f-pol); }
 .sem-cfg[data-fase="Prova"] .fase-sel { color: var(--f-prova); }
-.sem-cfg.manual .fase-sel { border-color: var(--ambar); font-weight: 600; }
+.sem-cfg.manual .fase-sel, body.modo-forca .sem-cfg.manual .forca-sel, .plano-forca-sel.manual { border-color: var(--ambar); font-weight: 600; }
 .sem-cfg.manual .sem-fase::after { content: "fase escolhida à mão"; font: 500 11px var(--mono); color: var(--ambar); }
 @media (max-width: 560px) { .sem-fase { flex-wrap: wrap; gap: 6px 10px; } .sem-fase .sem-km { margin-left: 0; width: 100%; } }
 .sem-cfg.leve > label::after { content: " · leve"; font-family: var(--fonte); font-size: 11px; color: var(--txt3); text-transform: none; letter-spacing: 0; }
@@ -392,6 +401,20 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .ed-passo .p-faixa { flex: 0 0 auto; }
 .ed-passo .p-classe { flex: 0 0 140px; }
 .ed-passo .ed-del-passo { flex: 0 0 30px; }
+.ed-titulo-ex { margin-bottom: 12px; }
+.ed-titulo-ex label:first-child { flex: 1 1 260px; }
+.ed-titulo-ex label:first-child input { flex: 1; min-width: 0; }
+.ed-ex-bloco .ed-bloco-cab { flex-wrap: wrap; }
+.ed-ex-bloco .bl-tipo { width: auto; flex: 0 0 auto; padding: 5px 24px 5px 8px; font-size: 12.5px; }
+.ed-bloco-cab .bl-titulo { flex: 1 1 160px; width: auto; min-width: 0; }
+.ed-ex { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 6px; }
+.ed-ex input, .ed-ex select { padding: 6px 8px; font-size: 12.5px; width: auto; min-width: 0; }
+.ed-ex label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--txt2); }
+.ed-ex .ex-nome { flex: 1 1 240px; }
+.ed-ex .ex-series { width: 54px; }
+.ed-ex .ex-valor { flex: 0 0 96px; }
+.ed-ex .ex-unidade { flex: 0 0 104px; padding-right: 24px; }
+.ed-ex .ex-nota { flex: 1 1 150px; }
 .p-faixa { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--txt2); }
 .p-faixa input { width: 64px; }
 
