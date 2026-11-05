@@ -1668,8 +1668,8 @@ function pintarPrevia() {
           ? ` <span class="${s.minutos > s.tempo_max ? "estourou" : "no-limite"}">· lim ${s.tempo_max}'</span>`
           : "";
         const exs = (s.forca && s.forca.lista && s.forca.lista.length)
-          ? `<div class="exs">${s.forca.lista.map((b) => `<div class="bl"><small>${b.bloco}</small>` +
-              b.exercicios.map((e) => `<span>${e.nome} <i>${e.series}</i></span>`).join("") + `</div>`).join("")}</div>` +
+          ? `<div class="exs">${s.forca.lista.map((b, bi) => `<div class="bl"><small>${b.bloco}</small>` +
+              b.exercicios.map((e, ei) => `<span class="ex-card" data-i="${i}" data-b="${bi}" data-e="${ei}" title="Trocar na biblioteca do TrainingPeaks">${e.nome} <i>${e.series}</i></span>`).join("") + `</div>`).join("")}</div>` +
             `<button type="button" class="ghost mini ver-exs" data-i="${i}">todos os exercícios</button>`
           : `<div class="grafico gforca"><svg><use href="#ic-forca"/></svg></div>`;
         const corpo = s.forca
@@ -1949,14 +1949,123 @@ function lerBlocosDoDom(cont) {
 const TIPOS_BLOCO = [["WarmUp", "Aquecimento / ativação"], ["Superset", "Superset"], ["Circuit", "Circuito"],
   ["SingleExercise", "Exercício único"], ["CoolDown", "Desaquecimento"]];
 const UNIDADES_EX = [["Reps", "reps"], ["RepsPerSide", "reps/lado"], ["Duration", "seg"], ["DistanceMeters", "metros"]];
-let CATALOGO_EX = null;     // {nome: id} dos exercícios do TP
-async function carregarCatalogoEx() {
-  if (CATALOGO_EX) return;
+let BIB_EX = null;          // espelho da biblioteca de exercícios do TP
+const DET_EX = {};          // vídeo, instruções e colunas de cada exercício já aberto
+const MUSCULOS_PT = { Abs: "Abdômen", Biceps: "Bíceps", Calves: "Panturrilha", Chest: "Peito", Forearms: "Antebraço",
+  Glute: "Glúteo", Hamstrings: "Posterior de coxa", LowerBack: "Lombar", Quads: "Quadríceps", Shoulders: "Ombro",
+  Triceps: "Tríceps", UpperBack: "Costas" };
+const semAcento = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const html = (t) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const rotMusculo = (m) => MUSCULOS_PT[String(m).replace(/\s/g, "")] || m;
+async function carregarBibEx() {
+  if (BIB_EX) return BIB_EX;
   const r = await api("/api/forca/exercicios");
-  CATALOGO_EX = Object.fromEntries(r.exercicios.slice().reverse().map((e) => [e.nome, e.id]));
-  let dl = document.getElementById("ex-catalogo");
-  if (!dl) { dl = document.createElement("datalist"); dl.id = "ex-catalogo"; document.body.appendChild(dl); }
-  dl.innerHTML = r.exercicios.map((e) => `<option value="${e.nome.replace(/"/g, "&quot;")}"></option>`).join("");
+  r.exercicios.forEach((e) => {
+    e.busca = semAcento([e.nome, ...e.alt, ...e.prim, ...e.sec, ...[...e.prim, ...e.sec].map(rotMusculo)].join(" "));
+    e.chave = semAcento(e.nome);
+  });
+  r.exercicios.sort((a, b) => (a.chave < b.chave ? -1 : 1));
+  BIB_EX = r;
+  return r;
+}
+async function detalheEx(id) {
+  if (!DET_EX[id]) DET_EX[id] = await api(`/api/forca/exercicio/${id}`);
+  return DET_EX[id];
+}
+// A biblioteca do TrainingPeaks espelhada: abre ao clicar em qualquer exercício.
+// aoEscolher(exercicio) recebe {id, nome, parametros}
+function abrirBibliotecaEx(atual, aoEscolher) {
+  document.querySelector(".bibex-fundo")?.remove();
+  const voltaFoco = document.activeElement;
+  const f = document.createElement("div");
+  f.className = "bibex-fundo";
+  f.innerHTML = `<div class="bibex" role="dialog" aria-modal="true" aria-label="Biblioteca de exercícios do TrainingPeaks">
+    <div class="bibex-cab">
+      <div><h2>Biblioteca do TrainingPeaks</h2><small>${atual ? `Trocando ${html(atual)}` : "Novo exercício"}</small></div>
+      <button type="button" class="ghost bibex-fecha" aria-label="Fechar">×</button>
+    </div>
+    <input class="bibex-busca" type="search" placeholder="Buscar por nome, apelido ou músculo" aria-label="Buscar exercício" autocomplete="off">
+    <div class="bibex-filtros">
+      <div class="bibex-origem" role="group" aria-label="Origem">
+        <button type="button" class="ativo" data-o="">Todos</button><button type="button" data-o="meu">Meus exercícios</button><button type="button" data-o="tp">Do TrainingPeaks</button>
+      </div>
+      <select class="bibex-musculo" aria-label="Grupo muscular"><option value="">Todos os músculos</option></select>
+      <span class="bibex-n" aria-live="polite"></span>
+    </div>
+    <div class="bibex-lista"><p class="dica">carregando a biblioteca…</p></div>
+  </div>`;
+  document.body.appendChild(f);
+  const lista = f.querySelector(".bibex-lista"), busca = f.querySelector(".bibex-busca"), selM = f.querySelector(".bibex-musculo");
+  let origem = "", filtrados = [];
+  const fechar = () => { f.remove(); document.removeEventListener("keydown", tecla); voltaFoco?.focus?.(); };
+  const tecla = (e) => { if (e.key === "Escape") { e.stopPropagation(); fechar(); } };
+  document.addEventListener("keydown", tecla);
+  f.addEventListener("mousedown", (e) => { if (e.target === f) fechar(); });
+  f.querySelector(".bibex-fecha").onclick = fechar;
+  const usar = async (e, botao) => {
+    if (botao) { botao.disabled = true; botao.textContent = "abrindo…"; }
+    let parametros = null;
+    try { parametros = (await detalheEx(e.id)).parametros; } catch (err) { console.warn("detalhe do exercício:", err); }
+    fechar();
+    aoEscolher({ id: e.id, nome: e.nome, parametros });
+  };
+  const pintar = () => {
+    const q = semAcento(busca.value).split(/\s+/).filter(Boolean), m = selM.value;
+    filtrados = BIB_EX.exercicios.filter((e) =>
+      (!origem || (origem === "meu") === e.meu) &&
+      (!m || e.prim.concat(e.sec).some((x) => x.replace(/\s/g, "") === m)) &&
+      q.every((t) => e.busca.includes(t)));
+    if (q.length) {         // começa com o que foi digitado, depois palavra inteira, depois o resto
+      const frase = q.join(" ");
+      const nota = (e) => { if (e.chave.startsWith(frase)) return 0;
+        const pal = e.busca.split(/\s+/);
+        return q.every((t) => pal.includes(t)) ? 1 : q.every((t) => pal.some((w) => w.startsWith(t))) ? 2 : 3; };
+      filtrados = filtrados.map((e) => [nota(e), e]).sort((x, y) => x[0] - y[0]).map((x) => x[1]);
+    }
+    f.querySelector(".bibex-n").textContent = `${filtrados.length} exercício${filtrados.length === 1 ? "" : "s"}`;
+    lista.innerHTML = filtrados.length ? filtrados.map((e, k) => {
+      const ms = [...new Set(e.prim.concat(e.sec))].map(rotMusculo).join(" · ");
+      return `<div class="bibex-item${e.nome === atual ? " atual" : ""}" data-k="${k}">
+        <button type="button" class="bibex-nome"><b>${html(e.nome)}</b>${ms ? `<small>${html(ms)}</small>` : ""}</button>
+        ${e.meu ? `<span class="bibex-tag">meu</span>` : ""}${e.nome === atual ? `<span class="bibex-tag atual">atual</span>` : ""}
+        <button type="button" class="ghost mini bibex-ver" aria-expanded="false">detalhes</button>
+      </div>`;
+    }).join("") : `<p class="dica">Nenhum exercício com esse filtro.</p>`;
+  };
+  lista.onclick = async (ev) => {
+    const item = ev.target.closest(".bibex-item"); if (!item) return;
+    const e = filtrados[+item.dataset.k];
+    if (ev.target.closest(".bibex-nome") || ev.target.closest(".bibex-usar")) return usar(e, ev.target.closest(".bibex-usar"));
+    const ver = ev.target.closest(".bibex-ver"); if (!ver) return;
+    const aberto = item.querySelector(".bibex-det");
+    if (aberto) { aberto.remove(); ver.setAttribute("aria-expanded", "false"); return; }
+    ver.setAttribute("aria-expanded", "true");
+    const d = document.createElement("div");
+    d.className = "bibex-det"; d.textContent = "carregando…";
+    item.appendChild(d);
+    try {
+      const x = await detalheEx(e.id);
+      d.innerHTML = `${x.instrucoes ? `<p>${html(x.instrucoes).replace(/\n/g, "<br>")}</p>` : `<p class="dica">Sem instruções na biblioteca.</p>`}
+        <div class="bibex-det-acoes"><button type="button" class="primario bibex-usar">Usar este exercício</button>
+        ${/^https:\/\//.test(x.video || "") ? `<a href="${attr(x.video)}" target="_blank" rel="noopener noreferrer">Ver vídeo</a>` : ""}</div>`;
+    } catch (err) { d.textContent = "Não consegui abrir os detalhes: " + err.message; }
+  };
+  busca.oninput = () => BIB_EX && pintar();
+  busca.onkeydown = (e) => { if (e.key === "Enter" && filtrados[0] && BIB_EX) { e.preventDefault(); usar(filtrados[0]); } };
+  selM.onchange = pintar;
+  f.querySelector(".bibex-origem").onclick = (ev) => {
+    const b = ev.target.closest("button"); if (!b) return;
+    origem = b.dataset.o;
+    f.querySelectorAll(".bibex-origem button").forEach((x) => x.classList.toggle("ativo", x === b));
+    if (BIB_EX) pintar();
+  };
+  busca.focus();
+  carregarBibEx().then((b) => {
+    if (!f.isConnected) return;
+    selM.insertAdjacentHTML("beforeend", b.musculos.map((m) => `<option value="${attr(m)}">${html(rotMusculo(m))}</option>`).join(""));
+    pintar();
+    lista.querySelector(".bibex-item.atual")?.scrollIntoView({ block: "center" });
+  }).catch((err) => { lista.innerHTML = `<p class="dica">Não consegui abrir a biblioteca: ${html(err.message)}</p>`; });
 }
 const attr = (v) => String(v ?? "").replace(/"/g, "&quot;");
 // parâmetro principal da série: o primeiro com valor, senão o primeiro que existir
@@ -1982,7 +2091,7 @@ function exerciciosHtml(blocos) {
       </div>
       ${b.exercicios.map((e, ei) => { const un = unidadeDoEx(e); return `
       <div class="ed-ex" data-e="${ei}">
-        <input class="ex-nome" list="ex-catalogo" value="${attr(e.nome)}" placeholder="buscar exercício" aria-label="Exercício">
+        <button type="button" class="ex-nome" title="Abrir a biblioteca do TrainingPeaks">${html(e.nome) || "Escolher na biblioteca"}</button>
         <label>séries <input class="ex-series" type="number" min="1" max="20" step="1" value="${e.series.length}"></label>
         <input class="ex-valor" value="${attr(valoresDoEx(e, un))}" placeholder="8 ou 12,10,8" aria-label="Repetições ou tempo">
         <select class="ex-unidade" aria-label="Unidade">${UNIDADES_EX.map(([v, t]) =>
@@ -1995,6 +2104,26 @@ function exerciciosHtml(blocos) {
       <button class="ghost mini ex-add">+ exercício</button>
     </div>`).join("") + `<button class="ghost mini" id="ed-add-bloco-ex">+ bloco</button>`;
 }
+// exercício escolhido na biblioteca: as colunas padrão dele valem, como no TP, com carga
+// em kg. Séries e repetições ficam; exercício que aceita tempo (prancha, isometria) vai
+// por segundos, e a unidade só muda nos outros se ele não aceitar a atual
+function exercicioEscolhido(escolha, antes) {
+  const base = antes && antes.series.length ? antes.series : [{ Reps: 8 }, { Reps: 8 }, { Reps: 8 }];
+  const ps = escolha.parametros;
+  const un0 = unidadeDoEx({ series: base });
+  const unidades = UNIDADES_EX.map(([p]) => p);
+  const un = !ps ? un0 : ps.includes("Duration") ? "Duration"
+    : ps.includes(un0) ? un0 : (ps.find((p) => unidades.includes(p)) || un0);
+  const extras = ps ? ps.filter((p) => !unidades.includes(p)).map((p) => p.replace("Lb", "Kg")) : null;
+  const padrao = un === "Duration" ? 30 : un === "DistanceMeters" ? 100 : 8;
+  return { nome: escolha.nome, id: escolha.id, notas: antes ? antes.notas : null, formatos: {},
+    series: base.map((sr) => {
+      const linha = { [un]: un === un0 ? sr[un0] : padrao };
+      if (extras) extras.forEach((p) => { linha[p] = null; });
+      else Object.keys(sr).filter((p) => !unidades.includes(p)).forEach((p) => { linha[p] = sr[p]; });
+      return linha;
+    }) };
+}
 // DOM -> blocos. Carga e formato de cada série ficam: só muda o que aparece nos campos
 function lerExercicios(cont, blocos) {
   return [...cont.querySelectorAll(".ed-ex-bloco")].map((bl) => {
@@ -2004,8 +2133,6 @@ function lerExercicios(cont, blocos) {
       notas: orig.notas,
       exercicios: [...bl.querySelectorAll(".ed-ex")].map((l) => {
         const ex = orig.exercicios[+l.dataset.e];
-        const nome = l.querySelector(".ex-nome").value.trim();
-        const id = nome === ex.nome ? ex.id : (CATALOGO_EX || {})[nome] || null;
         const un = l.querySelector(".ex-unidade").value;
         const n = Math.max(+l.querySelector(".ex-series").value || 1, 1);
         const vals = l.querySelector(".ex-valor").value.split(/[,;\s]+/).filter(Boolean);
@@ -2015,7 +2142,7 @@ function lerExercicios(cont, blocos) {
           UNIDADES_EX.forEach(([p]) => delete extras[p]);
           return { [un]: vals.length ? vals[Math.min(k, vals.length - 1)] : null, ...extras };
         });
-        return { nome, id, notas: l.querySelector(".ex-nota").value, series, formatos: ex.formatos };
+        return { nome: ex.nome, id: ex.id, notas: l.querySelector(".ex-nota").value, series, formatos: ex.formatos };
       }),
     };
   });
@@ -2025,29 +2152,39 @@ function montarEditorExercicios(ed, s, i) {
   let blocos = JSON.parse(JSON.stringify(s.forca.blocos || []));
   const pintar = () => { cont.innerHTML = exerciciosHtml(blocos); };
   pintar();
-  carregarCatalogoEx().catch((e) => console.warn("catálogo de exercícios:", e));
+  carregarBibEx().catch((e) => console.warn("biblioteca de exercícios:", e));
   const mover = (arr, k, d) => { const j = k + d; if (j >= 0 && j < arr.length) [arr[k], arr[j]] = [arr[j], arr[k]]; };
   cont.onclick = (ev) => {
     const t = ev.target;
-    const acao = ["ex-del", "ex-add", "ex-mover", "bl-del", "bl-mover"].find((c) => t.classList.contains(c));
+    const acao = ["ex-nome", "ex-del", "ex-add", "ex-mover", "bl-del", "bl-mover"].find((c) => t.classList.contains(c));
     if (!acao && t.id !== "ed-add-bloco-ex") return;
     ev.preventDefault();
     blocos = lerExercicios(cont, blocos);
     if (t.id === "ed-add-bloco-ex") {
-      blocos.push({ tipo: "SingleExercise", titulo: "", exercicios: [{ nome: "", series: [{ Reps: 8 }, { Reps: 8 }, { Reps: 8 }], formatos: {} }] });
-      return pintar();
+      return abrirBibliotecaEx("", (esc) => {
+        blocos.push({ tipo: "SingleExercise", titulo: "", exercicios: [exercicioEscolhido(esc, null)] });
+        pintar();
+      });
     }
     const bi = +t.closest(".ed-ex-bloco").dataset.b, b = blocos[bi];
     const ei = t.closest(".ed-ex") ? +t.closest(".ed-ex").dataset.e : -1;
+    if (acao === "ex-nome") {
+      return abrirBibliotecaEx(b.exercicios[ei].nome, (esc) => {
+        b.exercicios[ei] = exercicioEscolhido(esc, b.exercicios[ei]);
+        pintar();
+      });
+    }
+    if (acao === "ex-add") {
+      return abrirBibliotecaEx("", (esc) => {
+        b.exercicios.push(exercicioEscolhido(esc, b.exercicios[b.exercicios.length - 1]));
+        if (b.tipo === "SingleExercise") b.tipo = "Superset";
+        pintar();
+      });
+    }
     if (acao === "ex-del") b.exercicios.splice(ei, 1);
     if (acao === "ex-mover") mover(b.exercicios, ei, +t.dataset.d);
     if (acao === "bl-del") blocos.splice(bi, 1);
     if (acao === "bl-mover") mover(blocos, bi, +t.dataset.d);
-    if (acao === "ex-add") {
-      const ult = b.exercicios[b.exercicios.length - 1];
-      b.exercicios.push({ nome: "", series: ult ? ult.series.map((sr) => ({ ...sr })) : [{ Reps: 8 }, { Reps: 8 }, { Reps: 8 }], formatos: ult ? ult.formatos : {} });
-      if (b.tipo === "SingleExercise") b.tipo = "Superset";
-    }
     pintar();
   };
   // Superset e Circuito pedem o mesmo número de séries em todos os exercícios do bloco
@@ -2059,11 +2196,6 @@ function montarEditorExercicios(ed, s, i) {
   };
   ed.querySelector(".ed-aplicar-exs").onclick = async () => {
     blocos = lerExercicios(cont, blocos);
-    const faltando = blocos.flatMap((b) => b.exercicios).filter((e) => !e.nome || (CATALOGO_EX && !e.id && !(e.nome in CATALOGO_EX)));
-    if (faltando.length) {
-      alert("Escolha um exercício da lista do TrainingPeaks:\n" + faltando.map((e) => e.nome || "(linha vazia)").join("\n"));
-      pintar(); return;
-    }
     carregando("montando a sessão...");
     try {
       const r = await api("/api/forca/sessao_editada", {
@@ -2125,6 +2257,13 @@ $("#lista-treinos").onclick = (e) => {
   if (cfp) return copiarForcaPrevia(+cfp.dataset.w);
   const mais = e.target.closest(".add-mais");
   if (mais) return abrirEditorNovo(mais.closest(".tcell"));
+  const exc = e.target.closest(".ex-card");
+  if (exc) {                                  // clique no exercício: abre o editor do dia e a biblioteca
+    if (!document.querySelector(`.editor[data-e="${exc.dataset.i}"]`))
+      document.querySelector(`.treino[data-i="${exc.dataset.i}"] .trocar`).click();
+    document.querySelector(`.editor[data-e="${exc.dataset.i}"] .ed-ex-bloco[data-b="${exc.dataset.b}"] .ed-ex[data-e="${exc.dataset.e}"] .ex-nome`)?.click();
+    return;
+  }
   const ve = e.target.closest(".ver-exs");
   if (ve) {                                   // abre/fecha a lista completa de exercícios
     const card = ve.closest(".treino"); const aberto = card.classList.toggle("exs-aberto");
