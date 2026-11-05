@@ -52,6 +52,14 @@ def _icone_aba(pasta_png):
             % _json.dumps(js), height=0)
 _icone_aba(os.path.join(PAINEL, "assets", "png"))
 
+# SONDA TEMPORÁRIA: mostra só os NOMES dos cookies que chegam ao servidor
+if st.query_params.get("diag") == "cookie":
+    import streamlit.components.v1 as _c0
+    _c0.html("""<script>try{var W=window.top||window.parent;var sec=(W.location.protocol==='https:')?'; Secure':'';
+    W.document.cookie='aslab_diag=1; max-age=600; path=/; SameSite=Lax'+sec;}catch(e){}</script>""", height=0)
+    st.write("NOMES_COOKIES", sorted(st.context.cookies.keys()))
+    st.stop()
+
 # ---------- senha (mesmo cookie do app antigo: quem já entrou não digita de novo) ----------
 def _tok(pw):
     return hashlib.sha256(("aslab|" + pw).encode()).hexdigest()[:20]
@@ -73,7 +81,9 @@ def _gate():
     try: cookie_ok = st.context.cookies.get("aslab_k") == tok
     except Exception: cookie_ok = False
     if cookie_ok or st.query_params.get("k") == tok or st.session_state.get("auth_ok"):
-        if not st.session_state.get("auth_ok"): _lembrar(tok)
+        # grava aqui, numa execução que vai até o fim: logo antes de um st.rerun() o iframe
+        # some sem rodar, o cookie não fica e o próximo carregamento de página pede a senha
+        if not cookie_ok: _lembrar(tok)
         st.session_state["auth_ok"] = True
         return True
     st.markdown("""<style>
@@ -88,10 +98,17 @@ def _gate():
         if st.button("Entrar", type="primary", use_container_width=True):
             if p == pw:
                 st.session_state["auth_ok"] = True
-                _lembrar(tok); st.rerun()
+                st.rerun()
             else:
                 st.error("Senha incorreta.")
     return False
+
+# antes da senha: o Streamlit só guarda a página pedida na URL se a navegação já existir;
+# sem isso, quem abre /gerador e digita a senha cai no painel
+pg = st.navigation([st.Page(os.path.join(PAINEL, "app.py"), title="Painel", default=True),
+                    st.Page("gerador.py", title="Gerador de Treinos", url_path="gerador"),
+                    st.Page("montar.py", title="Montar treino", url_path="montar")],
+                   position="hidden")
 
 if not _gate(): st.stop()
 
@@ -121,8 +138,4 @@ if _e["v"] != nuvem.versao_local():
     st.cache_data.clear()              # pacote novo: o painel relê tudo
     _e["v"] = nuvem.versao_local()
 
-pg = st.navigation([st.Page(os.path.join(PAINEL, "app.py"), title="Painel", default=True),
-                    st.Page("gerador.py", title="Gerador de Treinos", url_path="gerador"),
-                    st.Page("montar.py", title="Montar treino", url_path="montar")],
-                   position="hidden")
 pg.run()
