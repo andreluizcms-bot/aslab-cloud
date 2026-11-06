@@ -190,7 +190,8 @@
     $("#res-periodo").innerHTML = (d && $("#inicio").value) ? `${fmtBR2($("#inicio").value)}<small>até ${fmtBR2($("#fim").value)}</small>` : "—";
     const pd = $("#prova-data").value, po = $("#prova").value, pn = $("#prova-nome").value;
     $("#res-prova").innerHTML = pd ? `${fmtBR2(pd)}<small>${[po, pn].filter(Boolean).join(" · ") || "sem objetivo"}</small>` : (po || "—");
-    $("#res-longo").textContent = $("#longo-max").value ? `${$("#longo-max").value} km` : "—";
+    $("#res-longo").innerHTML = $("#longo-max").value
+      ? `${$("#longo-max").value} km${$("#longo-min").value ? `<small>menor ${$("#longo-min").value} km</small>` : ""}` : "—";
     $("#res-semana").textContent = $("#semana-max").value ? `${$("#semana-max").value} km` : "—";
     const dias = typeof diasEscolhidos === "function" ? diasEscolhidos() : [];
     $("#res-dias").textContent = dias.length ? `${dias.length}×` : "—";

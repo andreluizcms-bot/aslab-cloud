@@ -250,7 +250,7 @@ function limparEstadoAtleta() {
   $("#sec-previa").classList.add("oculto");
   $("#publicar").disabled = true;
   $("#substituir").checked = true;
-  ["#prova-data", "#prova-nome", "#min-km", "#semana-max", "#semana-min"].forEach((k) => { $(k).value = ""; });
+  ["#prova-data", "#prova-nome", "#min-km", "#semana-max", "#semana-min", "#longo-min"].forEach((k) => { $(k).value = ""; });
   $("#prova").value = "";
   $("#btn-ciclo-prova").disabled = true;
   $("#inicio").value = PADRAO_BLOCO.inicio; $("#fim").value = PADRAO_BLOCO.fim;
@@ -444,11 +444,29 @@ function manuaisPayload() {
 }
 // campos do período que o treinador digitou: o gerador não sobrescreve
 const CAMPOS_MANUAIS = new Set();
-function setAuto(sel, v) { if (!CAMPOS_MANUAIS.has(sel)) $(sel).value = v; }
+function setAuto(sel, v) {
+  if (CAMPOS_MANUAIS.has(sel)) return;
+  // o maior longo automático nunca fica abaixo do menor longo digitado
+  const mn = +$("#longo-min").value;
+  if (sel === "#longo-max" && v !== "" && mn > +v) v = mn;
+  $(sel).value = v;
+}
 document.addEventListener("input", (e) => {
-  if (["semana-max", "semana-min", "longo-max", "min-km"].includes(e.target.id))
+  if (["semana-max", "semana-min", "longo-max", "longo-min", "min-km"].includes(e.target.id))
     CAMPOS_MANUAIS.add("#" + e.target.id);
 });
+// menor longo acima do maior longo: o automático sobe junto; os dois digitados, vale o maior
+document.addEventListener("change", (e) => {
+  if (e.target.id !== "longo-min") return;
+  const mn = +e.target.value, mx = +$("#longo-max").value;
+  if (!mn || !mx || mn <= mx) return;
+  if (CAMPOS_MANUAIS.has("#longo-max")) {
+    statusProgressao(`Menor longo (${mn} km) acima do maior longo (${mx} km): vale o maior longo.`, true);
+    return;
+  }
+  setAuto("#longo-max", mn);
+  _longoEditado = true;                // a periodização refeita leva o novo maior longo
+}, true);
 
 function pintarPlano() {
   const box = $("#plano-box");
@@ -868,6 +886,8 @@ function progressaoPedido() {
     dias_semana: (typeof diasEscolhidos === "function" && diasEscolhidos().length) || null,
     // menor semana do Período: nenhuma semana de carga abaixo dela (vazio = 0, sem piso)
     semana_min: $("#semana-min").value === "" ? 0 : +$("#semana-min").value,
+    // menor longo do Período: nenhum longo de Base/Específico abaixo dele (vazio = 0, sem piso)
+    longo_min: $("#longo-min").value === "" ? 0 : +$("#longo-min").value,
   };
 }
 function statusProgressao(txt, alerta) {
@@ -891,6 +911,7 @@ function progressaoDoPlano(p) {
   if (pr.progressao != null) $("#progressao").value = pr.progressao;
   if (pr.min_km != null) setAuto("#min-km", pr.min_km);
   if (pr.semana_min) setAuto("#semana-min", pr.semana_min);
+  if (pr.longo_min) setAuto("#longo-min", pr.longo_min);
   if (["base", "especifico", "base_especifico", "completo"].includes(pr.modo)) $("#fases-ciclo").value = pr.modo;
   ["#recup-cada", "#recup-corte"].forEach((k) => { $(k).disabled = sem; });
   statusProgressao("Progressão da periodização do atleta: mudou aqui, o plano inteiro é refeito.");
@@ -956,15 +977,15 @@ document.addEventListener("input", (e) => {
   if (["progressao", "recup-cada", "recup-corte", "sem-recup"].includes(e.target.id)) agendarRefazer(e);
 });
 document.addEventListener("change", (e) => {
-  if (["semana-max", "semana-min", "longo-max", "min-km"].includes(e.target.id)) agendarRefazer(e);
+  if (["semana-max", "semana-min", "longo-max", "longo-min", "min-km"].includes(e.target.id)) agendarRefazer(e);
 });
 function agendarRefazer(e) {
   if (!DADOS || !DADOS.periodizacao) return;
-  if (["semana-max", "semana-min", "longo-max", "min-km"].includes(e.target.id)) {
+  if (["semana-max", "semana-min", "longo-max", "longo-min", "min-km"].includes(e.target.id)) {
     // fora da periodização (caixa "Seguir a periodização" desmarcada) os
-    // campos valem só para o bloco; a menor semana apagada também refaz (tira o piso)
+    // campos valem só para o bloco; menor semana e menor longo apagados também refazem (tiram o piso)
     if (!($("#seguir-plano") && $("#seguir-plano").checked)) return;
-    if (!e.target.value && e.target.id !== "semana-min") return;
+    if (!e.target.value && !["semana-min", "longo-min"].includes(e.target.id)) return;
     if (e.target.id === "semana-max") _picoEditado = true;
     else if (e.target.id === "longo-max") _longoEditado = true;
   }
@@ -1572,6 +1593,7 @@ $("#gerar").onclick = async () => {
         min_km_treino: $("#min-km").value ? parseFloat($("#min-km").value) : null,
         semana_max_km: $("#semana-max").value ? parseFloat($("#semana-max").value) : null,
         longo_max_km: $("#longo-max").value ? parseFloat($("#longo-max").value) : null,
+        longo_min_km: $("#longo-min").value ? parseFloat($("#longo-min").value) : null,
         base: {
           longo_km: parseFloat($("#b-longo").value),
           limiar_min: parseFloat($("#b-limiar").value),
@@ -1600,7 +1622,7 @@ function payloadSoForca() {
   for (let w = 1; w <= nSemanasPeriodo(); w++) fases[w] = { forca: faseForcaDaSemana(w) };
   return { so_forca: true, fases, prova: null, prova_data: null, prova_nome: null, prova_km: null, provas: [],
     taper_ctl: false, teste_limiar: "nenhum", min_km_treino: null, semana_max_km: null, semana_min_km: null,
-    longo_max_km: null, semana_min: null, sem_recuperacao: true, seguir_periodizacao: false, semanas_forca: {} };
+    longo_max_km: null, longo_min_km: null, semana_min: null, longo_min: null, sem_recuperacao: true, seguir_periodizacao: false, semanas_forca: {} };
 }
 
 // planejado que este bloco substitui: mesmo dia e mesmo tipo de treino. Vale depois de
@@ -2223,6 +2245,7 @@ async function garantirLongo(semanas) {
       body: JSON.stringify({ athlete_id: DADOS.athlete_id, threshold_ms: thresholdEscolhido(),
         semanas: ws, tetos: PREVIA.tetos || {},
         longo_max_km: $("#longo-max").value ? parseFloat($("#longo-max").value) : null,
+        longo_min_km: $("#longo-min").value ? parseFloat($("#longo-min").value) : null,
         min_km: parseFloat($("#min-km").value) || null, prova: $("#prova").value || null,
         sessoes: idx.map(([s]) => s) }),
     });
@@ -2855,6 +2878,7 @@ $("#btn-ciclo-periodo").onclick = async () => {
     statusProgressao((completo ? `Ciclo completo criado até a prova de ${fmt(provaDia)} (${objetivo.replace("k", " km")})`
                                : `Ciclo sem prova criado: ${nome.toLowerCase()}`) + `, maior semana ${km} km` +
       ($("#longo-max").value ? `, longo até ${$("#longo-max").value} km` : "") +
+      ($("#longo-min").value ? `, longo nunca abaixo de ${$("#longo-min").value} km` : "") +
       ($("#min-km").value ? `, mínimo de ${$("#min-km").value} km por treino` : "") + "." +
       (!completo && tinhaProva ? " A data de prova da tela foi limpa (o ciclo não tem prova)." : "") +
       (completo && pd && pd !== provaDia ? ` O Dia da caixa Prova estava fora do período; a prova ficou no Fim (${fmt(provaDia)}).` : "") +

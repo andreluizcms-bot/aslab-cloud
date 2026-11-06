@@ -90,7 +90,7 @@ def ponto_de_partida(hist, objetivo=None, semanas_build=None):
 def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim=None,
               recup_cada=4, recup_corte_pct=25.0, progressao_max_pct=None,
               longo_pico=None, fases_ciclo=None, ini_auto=False, min_km=None,
-              dias_semana=None, semana_min=None):
+              dias_semana=None, semana_min=None, longo_min=None):
     """Semanas do ciclo até a prova (e depois dela, se fim > prova):
     [{idx, inicio, fase, km, longo, obs}]. obs traz sessões-chave e "semana leve".
 
@@ -116,7 +116,11 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
         do mínimo por treino).
     semana_min: menor semana pedida. Nenhuma semana de Base/Específico (a leve
         também) fica abaixo dela, e o ciclo começa nela ou acima; polimento,
-        prova e pós-prova ficam de fora."""
+        prova e pós-prova ficam de fora.
+    longo_min: menor longo pedido. Nenhum longo de Base/Específico (o da semana
+        leve também) fica abaixo dele, e a rampa do longo começa nele ou acima;
+        polimento, prova e pós-prova ficam de fora. A semana sobe junto quando
+        não comporta o longo."""
     m = MACROS.get(objetivo or PADRAO, MACROS[PADRAO])
     ini = dt.date.fromisoformat(inicio) if isinstance(inicio, str) else inicio
     seg = ini - dt.timedelta(days=ini.weekday())
@@ -145,6 +149,10 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
     longo_ini = float(longo_ini) if longo_ini else min(km_ini * 0.3, longo_max)
     frac = m.get("frac_longo", 0.30)
     longo_pico = longo_pedido if longo_pedido else min(km_pico * frac, longo_max)
+    # menor longo: o maior longo digitado manda nele; sem maior longo, o pico sobe até o piso
+    lmn = float(longo_min) if longo_min else 0.0
+    if longo_pedido: lmn = min(lmn, longo_pedido)
+    elif lmn: longo_pico = max(longo_pico, lmn)
     # proporção máxima longo/semana: a padrão, ou a do pedido (com folga) quando
     # o treinador pediu um longo maior que a fração do objetivo
     teto_frac = max(frac + 0.05, (longo_pico / km_pico + 0.02) if km_pico else 0)
@@ -170,6 +178,7 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
     km_ini = min(km_ini, km_pico)
     sm = min(float(semana_min), km_pico) if semana_min else 0.0
     km_ini = max(km_ini, sm)
+    longo_ini = max(longo_ini, lmn)
     if longo_pico:
         longo_ini = min(longo_ini, longo_pico)
     km_carga, longo_carga = {}, {}
@@ -228,6 +237,9 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
         km = round(km)
         if longo is not None:
             longo = min(longo, km * teto_frac if km else longo)
+            if lmn and fase in ("Base", "Específico"):
+                longo = max(longo, lmn)                 # menor longo pedido
+                km = max(km, int(-(-longo // 1)))       # a semana comporta o longo
             longo = round(longo * 2) / 2
             obs = f"{obs} · longo {longo:g} km"
         rows.append({"idx": i + 1, "inicio": wseg.isoformat(), "fase": fase,
