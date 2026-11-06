@@ -202,7 +202,9 @@
     $("#res-objetivo").textContent = d ? (forcaObjetivo() === "hipertrofia" ? "Hipertrofia" : "Performance") : "—";
     if (ciclismo()) {
       $("#res-sub").textContent = `ciclo de ciclismo · ${$("#cic-disciplina").value === "mtb" ? "mountain bike" : "estrada"}`;
-      $("#res-cic").innerHTML = d ? `${$("#cic-metrica").value === "ftp" ? "potência" : "FC"}<small>${$("#cic-metrica").value === "ftp" ? (d.ftp ? `FTP ${d.ftp} W` : "sem FTP no TP") : (d.threshold_hr ? `limiar ${d.threshold_hr} bpm` : "sem FC de limiar")}</small>` : "—";
+      const mt = $("#cic-metrica").value;
+      $("#res-cic").innerHTML = !d ? "—" : mt === "rpe" ? "percepção<small>Borg 6 a 20</small>"
+        : `${mt === "ftp" ? "potência" : "FC"}<small>${mt === "ftp" ? (d.ftp ? `FTP ${d.ftp} W` : "sem FTP no TP") : (d.threshold_hr ? `limiar ${d.threshold_hr} bpm` : "sem FC de limiar")}</small>`;
       $("#res-cic-semana").innerHTML = $("#cic-horas-pico").value ? `${$("#cic-horas-pico").value} h<small>longão até ${$("#cic-longao-pico").value || "—"} h</small>` : "—";
     }
     const n = (d && typeof nSemanasPeriodo === "function" && $("#inicio").value) ? nSemanasPeriodo() : null;

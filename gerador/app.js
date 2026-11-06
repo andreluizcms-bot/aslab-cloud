@@ -1594,7 +1594,8 @@ function cicPadroes() {
   const l0 = b.maior_pedal_h ? Math.max(1, Math.round(b.maior_pedal_h * 4) / 4) : 2;
   setAuto("#cic-longao-ini", l0);
   setAuto("#cic-longao-pico", Math.max(l0, mtb ? 3 : 4));
-  if (!CAMPOS_MANUAIS.has("#cic-metrica")) $("#cic-metrica").value = DADOS.ftp ? "ftp" : "fc";
+  // potência quando há FTP; senão FC de limiar; sem nenhum dos dois, percepção de esforço (Borg)
+  if (!CAMPOS_MANUAIS.has("#cic-metrica")) $("#cic-metrica").value = DADOS.ftp ? "ftp" : DADOS.threshold_hr ? "fc" : "rpe";
   const t = [DADOS.ftp ? `FTP ${DADOS.ftp} W` : "sem FTP no TP", DADOS.threshold_hr ? `FC de limiar ${DADOS.threshold_hr} bpm` : "sem FC de limiar no TP"];
   $("#cic-limiares").textContent = t.join(" · ") + (b.horas_semana ? ` · pedalou ${String(b.horas_semana).replace(".", ",")} h/semana nas últimas 4 semanas` : "");
 }
