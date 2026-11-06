@@ -67,6 +67,8 @@
       <div class="corrida-only"><dt>Maior longo</dt><dd id="res-longo">—</dd></div>
       <div class="corrida-only"><dt>Maior semana</dt><dd id="res-semana">—</dd></div>
       <div class="forca-only"><dt>Objetivo</dt><dd id="res-objetivo">—</dd></div>
+      <div class="ciclismo-only"><dt>Bike</dt><dd id="res-cic">—</dd></div>
+      <div class="ciclismo-only"><dt>Maior semana</dt><dd id="res-cic-semana">—</dd></div>
       <div><dt>Dias/semana</dt><dd id="res-dias">—</dd></div>
       <div><dt>Força</dt><dd id="res-forca">—</dd></div>
       <div class="corrida-only"><dt>Zonas</dt><dd id="res-zonas">—</dd></div>
@@ -123,7 +125,7 @@
 
     <!-- 2. BLOCO -->
     <section class="passo oculto" id="sec-bloco" data-passo="bloco">
-      <div class="passo-cab"><h1>Bloco</h1><p class="corrida-only">Datas, prova e os volumes que o motor vai perseguir.</p><p class="forca-only">Datas e fases da periodização de força.</p></div>
+      <div class="passo-cab"><h1>Bloco</h1><p class="corrida-only">Datas, prova e os volumes que o motor vai perseguir.</p><p class="forca-only">Datas e fases da periodização de força.</p><p class="ciclismo-only">Datas, horas e fases do ciclo de ciclismo.</p></div>
 
       <div class="campos">
         <div class="grupo">
@@ -132,6 +134,7 @@
             <label><input type="radio" name="modalidade" value="corrida"><span>Corrida</span></label>
             <label><input type="radio" name="modalidade" value="mista" checked><span>Corrida e força</span></label>
             <label><input type="radio" name="modalidade" value="forca"><span>Só força</span></label>
+            <label><input type="radio" name="modalidade" value="ciclismo"><span>Ciclismo</span></label>
           </div>
           <p class="dica" style="margin:6px 0 0">Define quais treinos aparecem na grade e na sugestão das semanas.</p>
         </div>
@@ -174,6 +177,39 @@
               title="Cria a periodização do atleta do Início ao Fim, com a maior semana, o maior longo e o mínimo por treino daqui">Abrir ciclo no período</button>
           </div>
           <p class="dica corrida-only" id="dica-partida" style="margin:6px 0 0"></p>
+        </div>
+
+        <div class="grupo ciclismo-only" id="grupo-ciclismo">
+          <h2>Periodização de ciclismo</h2>
+          <div class="linha">
+            <label>Disciplina <select id="cic-disciplina"><option value="estrada">Estrada</option><option value="mtb">Mountain bike</option></select></label>
+            <label>Alvo <select id="cic-metrica" title="Com potenciômetro, os alvos saem em % do FTP do atleta; sem, em % da FC de limiar. Os dois valores são só lidos do TrainingPeaks">
+              <option value="ftp">Potência (% do FTP)</option><option value="fc">FC (% da FC de limiar)</option></select></label>
+            <span class="dica" id="cic-limiares" style="margin:0"></span>
+          </div>
+          <div class="linha" style="margin-top:8px">
+            <label>1ª semana <input type="number" id="cic-horas-ini" step="0.5" min="1" class="cic-campo"><u>h</u></label>
+            <label>Maior semana <input type="number" id="cic-horas-pico" step="0.5" min="1" class="cic-campo"><u>h</u></label>
+            <label>Menor semana <input type="number" id="cic-semana-min" step="0.5" min="0" placeholder="—" class="cic-campo"
+              title="Nenhuma semana de Base, Construção ou Específico fica abaixo dessas horas, nem a leve"><u>h</u></label>
+            <label>1º longão <input type="number" id="cic-longao-ini" step="0.25" min="0.5" class="cic-campo"><u>h</u></label>
+            <label>Maior longão <input type="number" id="cic-longao-pico" step="0.25" min="0.5" class="cic-campo"><u>h</u></label>
+            <label>Menor longão <input type="number" id="cic-longao-min" step="0.25" min="0" placeholder="—" class="cic-campo"
+              title="Nenhum longão de Base, Construção ou Específico fica abaixo disso, nem o da semana leve"><u>h</u></label>
+          </div>
+          <div class="linha" style="margin-top:8px">
+            <label>Prova <input type="date" id="cic-prova-data" class="cic-campo" title="Com prova no período, o ciclo termina em polimento e prova"></label>
+            <label>Nome <input type="text" id="cic-prova-nome" placeholder="opcional"></label>
+            <label>Duração <input type="number" id="cic-prova-h" step="0.25" min="0.5" placeholder="—" class="cic-campo"><u>h</u></label>
+          </div>
+          <div class="linha" style="margin-top:8px">
+            <label>Aumento por semana <input type="number" id="cic-aumento" value="10" step="1" min="0" max="25" class="cic-campo"><u>%</u></label>
+            <label>Semana leve a cada <input type="number" id="cic-recup-cada" value="4" step="1" min="0" max="8" class="cic-campo"
+              title="Zero deixa o ciclo sem semana leve"><u>sem</u></label>
+            <label>Corte na leve <input type="number" id="cic-recup-corte" value="30" step="5" min="0" max="60" class="cic-campo"><u>%</u></label>
+          </div>
+          <p class="dica" id="cic-status" style="margin:6px 0 10px">Fase, horas e longão de cada semana dá para mudar no quadro: o que você mexer à mão fica.</p>
+          <div id="plano-ciclismo"></div>
         </div>
 
         <div class="grupo forca-only">
@@ -257,13 +293,14 @@
       <div class="passo-pe">
         <span class="dica corrida-only" id="dica-gerar">O motor monta cada sessão pelas zonas do atleta e pela periodização.</span>
         <span class="dica forca-only">O motor monta cada sessão pelo foco marcado e pela fase de força da semana.</span>
+        <span class="dica ciclismo-only">O motor monta cada pedal pela fase e pelas horas da semana no plano de ciclismo.</span>
         <button id="gerar" class="primario">Gerar prévia</button>
       </div>
     </section>
 
     <!-- 4. PRÉVIA -->
     <section class="passo oculto" id="sec-previa" data-passo="previa">
-      <div class="passo-cab"><h1>Prévia</h1><p class="corrida-only">O bloco inteiro como calendário. Clique em qualquer treino para trocar ou editar antes de publicar.</p><p class="forca-only">O bloco inteiro como calendário. Em cada dia, abra Exercícios para trocar, ajustar, incluir ou tirar exercícios antes de publicar.</p></div>
+      <div class="passo-cab"><h1>Prévia</h1><p class="corrida-only">O bloco inteiro como calendário. Clique em qualquer treino para trocar ou editar antes de publicar.</p><p class="ciclismo-only">O bloco inteiro como calendário, com horas de bike e TSS de cada semana. Clique em qualquer treino para trocar ou editar antes de publicar.</p><p class="forca-only">O bloco inteiro como calendário. Em cada dia, abra Exercícios para trocar, ajustar, incluir ou tirar exercícios antes de publicar.</p></div>
       <div id="resumo-semanas" class="semanas"></div>
       <div id="pmc-linha" class="pmc-linha oculto"></div>
       <div id="avisos-seq" class="aviso conflitos oculto"></div>

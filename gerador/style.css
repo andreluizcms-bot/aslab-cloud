@@ -43,8 +43,13 @@ body {
 :focus-visible { outline: 2px solid var(--ambar); outline-offset: 2px; }
 .oculto { display: none !important; }
 /* modalidade "Só força": nada de corrida na tela */
-body.modo-forca .corrida-only { display: none !important; }
+body.modo-forca .corrida-only, body.modo-ciclismo .corrida-only { display: none !important; }
 body:not(.modo-forca) .forca-only { display: none !important; }
+body:not(.modo-ciclismo) .ciclismo-only { display: none !important; }
+#plano-ciclismo input { width: 64px; padding: 4px 6px; font-size: 12px; }
+#plano-ciclismo td { white-space: nowrap; }
+#plano-ciclismo select { font-size: 12px; padding: 4px 22px 4px 8px; }
+#plano-ciclismo .manual, #plano-ciclismo tr.manual td:first-child { border-color: var(--ambar); color: var(--ambar); }
 svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 u { text-decoration: none; color: var(--txt3); font-size: 12px; }
 small { font-size: 12px; }
@@ -144,6 +149,8 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .ciclo-sem[data-fase="Pré-competitivo"] .barra { background: var(--verde); }
 .ciclo-sem[data-fase="Competitivo"] .barra { background: var(--verm); }
 .ciclo-sem[data-fase="Descarga"] .barra { background: var(--f-leve); }
+.ciclo-sem[data-fase="Construção"] .barra { background: var(--ambar2); }
+.ciclo-sem[data-fase="Recuperação"] .barra { background: var(--f-leve); }
 .ciclo-sem.leve .barra { background: var(--f-leve); }
 .ciclo-sem:hover .barra, .ciclo-sem.atual .barra { filter: brightness(1.25); }
 .ciclo-sem.atual::after { content: ""; position: absolute; left: 0; right: 0; bottom: -6px; height: 2px; background: var(--txt); border-radius: 1px; }
@@ -291,6 +298,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .sem-cfg select.ativo[data-cat="longo"] { --cat: var(--teal); }
 .sem-cfg select.ativo[data-cat="rodagem"] { --cat: var(--verde); }
 .sem-cfg select.ativo[data-cat="bike"] { --cat: var(--teal2); }
+.sem-cfg select.ativo[data-cat="qualbike"] { --cat: var(--coral2); }
 .sem-cfg select.ativo[data-cat="forca"] { --cat: var(--ambar2); }
 /* dia marcado à mão pelo treinador: o gerador não muda */
 .sem-cfg select.manual { border-color: var(--coral); box-shadow: inset 2px 0 0 var(--coral); }

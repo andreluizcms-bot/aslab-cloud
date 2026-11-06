@@ -24,6 +24,11 @@ const TIPOS = [
   ["bike_rodagem", "Bike giro Z2"],
   ["bike_intervalado", "Bike intervalado"],
   ["bike_longa", "Bike longa"],
+  ["cic_endurance", "Endurance (zona 2)"], ["cic_leve", "Pedal leve"], ["cic_longao", "Longão"],
+  ["cic_tempo", "Tempo em blocos"], ["cic_sweet", "Sweet spot (sem estudo)"], ["cic_limiar", "Limiar"],
+  ["cic_over_under", "Over/under (sem estudo)"], ["cic_vo2", "VO2máx"], ["cic_3015", "Intervalado 30/15"],
+  ["cic_sprint", "Sprints 30\""], ["cic_torque", "Torque em subida"], ["cic_xco", "Simulação XCO (sem estudo)"],
+  ["cic_tecnica", "Técnica de MTB"], ["cic_teste_ftp", "Teste de FTP 20'"],
   ["forca", "Força (academia)"],
   ["forca_inferior", "Força · membros inferiores"],
   ["forca_superior", "Força · membros superiores"],
@@ -242,6 +247,7 @@ const PADRAO_BLOCO = {
 // grade, fases, notas, estruturas fixadas, prova, pisos e datas
 function limparEstadoAtleta() {
   PREVIA = null; NOTAS = {}; FIXOS = {}; FASES = {}; PROVAS_PRIO = {}; PROVAS_KM = {}; MANUAIS = {};
+  CIC_MANUAL = {}; CIC_PLANO = null;
   CAMPOS_MANUAIS.clear();
   $("#lista-treinos").innerHTML = "";
   $("#conflitos").classList.add("oculto"); $("#conflitos").innerHTML = "";
@@ -364,6 +370,8 @@ function pintarPerfil() {
   // sugestao para o maior longo do periodo, editavel
   setAuto("#longo-max", Math.max(Math.round((b.longo_km * 1.35) * 2) / 2, b.longo_km + 1.5));
   sugerirBloco();
+  cicPadroes();
+  if (modalidade() === "ciclismo") agendarPlanoCiclismo();
 
   pintarZonas();
 }
@@ -452,7 +460,8 @@ function setAuto(sel, v) {
   $(sel).value = v;
 }
 document.addEventListener("input", (e) => {
-  if (["semana-max", "semana-min", "longo-max", "longo-min", "min-km"].includes(e.target.id))
+  if (["semana-max", "semana-min", "longo-max", "longo-min", "min-km"].includes(e.target.id)
+      || e.target.classList.contains("cic-campo"))
     CAMPOS_MANUAIS.add("#" + e.target.id);
 });
 // menor longo acima do maior longo: o automático sobe junto; os dois digitados, vale o maior
@@ -1130,6 +1139,7 @@ $("#plano-forca").addEventListener("change", (e) => {
 });
 document.addEventListener("fases-mudou", pintarPlanoForca);
 document.addEventListener("change", (e) => {
+  if (["inicio", "fim"].includes(e.target.id)) agendarPlanoCiclismo();
   if (["inicio", "fim", "forca-descarga"].includes(e.target.id) || e.target.name === "forca-objetivo") {
     pintarPlanoForca();
     document.dispatchEvent(new CustomEvent("fases-mudou"));
@@ -1139,6 +1149,7 @@ document.addEventListener("change", (e) => {
 function sugestaoGrade(w) {
   let dias = diasEscolhidos();
   w = w || 1;
+  if (modalidade() === "ciclismo") return sugestaoCiclismo(w, dias);
   if (modalidade() === "forca") {           // só força: 2 a 4 dias de força, alternando o foco
     if (!dias.length) dias = [1, 3, 5];     // sem dias marcados: ter/qui/sáb
     const focos = ["forca", "forca_inferior", "forca_superior", "forca_core"];
@@ -1241,8 +1252,9 @@ function montarDias(preservar) {
   document.querySelectorAll("#dias select.forca2").forEach((s2) => {
     (prevF2[s2.dataset.semana2] ??= {})[s2.dataset.dia2] = s2.value;
   });
-  const comForca2 = modalidade() === "mista";
+  const comForca2 = ["mista", "ciclismo"].includes(modalidade());
   const soForca = modalidade() === "forca";
+  const cicl = modalidade() === "ciclismo";
   const rotForca = (v) => ((TIPOS.find(([x]) => x === v) || [])[1] || v).replace("Força · ", "").replace(" (academia)", "");
   const forca2Html = (w, i) => {
     if (!comForca2) return "";
@@ -1266,15 +1278,19 @@ function montarDias(preservar) {
     abrev.map((a) => `<span>${a}</span>`).join("") + `<span></span></div>`;
   for (let w = 1; w <= n; w++) {
     const fw = FASES[w] || {};
+    const cm = (CIC_MANUAL[w] || {}).fase || "";
     html += `<div class="sem-cfg"><div class="sem-fase">` +
-      (soForca ? "" : `<label title="Fase do ciclo de corrida nesta semana — muda a sugestão de treinos e o volume">Fase ` +
+      (soForca ? "" : cicl ? `<label title="Fase do ciclo de ciclismo nesta semana: muda a sugestão de treinos e a dose">Fase ` +
+      `<select class="cic-fase-sel" data-semana="${w}"><option value="">automática</option>` +
+      FASES_CIC.map((f) => `<option value="${f}" ${cm === f ? "selected" : ""}>${f}</option>`).join("") + `</select></label>`
+      : `<label title="Fase do ciclo de corrida nesta semana — muda a sugestão de treinos e o volume">Fase ` +
       `<select class="fase-sel" data-semana="${w}"><option value="">automática</option>` +
       FASES_PLANO.map((f) => `<option value="${f}" ${fw.corrida === f ? "selected" : ""}>${f}</option>`).join("") +
       `</select></label>`) +
-      `<label title="Fase da periodização de força nesta semana — define as séries e repetições">${soForca ? "Fase" : "Força"} ` +
+      (cicl ? "" : `<label title="Fase da periodização de força nesta semana — define as séries e repetições">${soForca ? "Fase" : "Força"} ` +
       `<select class="forca-sel" data-semana="${w}"><option value="">automática</option>` +
       FASES_FORCA.map((f) => `<option value="${f}" ${fw.forca === f ? "selected" : ""}>${f}</option>`).join("") +
-      `</select></label>${soForca ? "" : `<span class="sem-km"></span>`}</div><label>Sem ${w}</label>` +
+      `</select></label>`) + `${soForca ? "" : `<span class="sem-km"></span>`}</div><label>Sem ${w}</label>` +
       abrev.map((_, i) => {
         const v = valorDe(w, i);
         const nota = (NOTAS[w] || {})[i];
@@ -1303,6 +1319,10 @@ function montarDias(preservar) {
     `<span></span></div>`;
   $("#dias").innerHTML = html;
   $("#dias").onchange = (e) => {
+    if (e.target.classList.contains("cic-fase-sel")) {      // fase do ciclismo: vale no quadro do Bloco também
+      cicManual(+e.target.dataset.semana, "fase", e.target.value);
+      return;
+    }
     if (e.target.classList.contains("fase-sel") || e.target.classList.contains("forca-sel")) {
       const w = +e.target.dataset.semana, chave = e.target.classList.contains("fase-sel") ? "corrida" : "forca";
       FASES[w] = { ...(FASES[w] || {}) };
@@ -1547,11 +1567,156 @@ $("#btn-ciclo-prova").onclick = async () => {
   $("#plano-box").scrollIntoView({ behavior: "smooth", block: "start" });
 };
 
+// -- ciclismo: plano do ciclo em horas, sugestão da grade e envio ao motor ----
+const FASES_CIC = ["Base", "Construção", "Específico", "Polimento", "Prova", "Recuperação"];
+let CIC_PLANO = null;       // semanas do plano de ciclismo (vêm do servidor)
+let CIC_MANUAL = {};        // {semana: {fase, horas, longao_h}} mexido à mão: vence o cálculo
+let _cicTimer = null;
+const numCampo = (id) => ($(id).value === "" ? null : +$(id).value);
+function paramsCiclismo() { return { metrica: $("#cic-metrica").value, disciplina: $("#cic-disciplina").value }; }
+function cicPedido() {
+  const rc = numCampo("#cic-recup-cada");
+  return { ...paramsCiclismo(), horas_ini: numCampo("#cic-horas-ini"), horas_pico: numCampo("#cic-horas-pico"),
+    semana_min_h: numCampo("#cic-semana-min"), longao_ini_h: numCampo("#cic-longao-ini"),
+    longao_pico_h: numCampo("#cic-longao-pico"), longao_min_h: numCampo("#cic-longao-min"),
+    prova_data: $("#cic-prova-data").value || null, prova_nome: $("#cic-prova-nome").value || null,
+    prova_h: numCampo("#cic-prova-h"), aumento: numCampo("#cic-aumento"), recup_cada: rc, sem_recup: rc === 0,
+    recup_corte: numCampo("#cic-recup-corte"), manual: CIC_MANUAL };
+}
+// ponto de partida pelo histórico de pedal do atleta (só preenche o que não foi digitado)
+function cicPadroes() {
+  if (!DADOS) return;
+  const b = (DADOS.historico && DADOS.historico.bike) || {};
+  const mtb = $("#cic-disciplina").value === "mtb";
+  const h0 = b.horas_semana ? Math.max(2, Math.round(b.horas_semana * 2) / 2) : 5;
+  setAuto("#cic-horas-ini", h0);
+  setAuto("#cic-horas-pico", Math.max(h0, Math.round(h0 * 1.4 * 2) / 2));
+  const l0 = b.maior_pedal_h ? Math.max(1, Math.round(b.maior_pedal_h * 4) / 4) : 2;
+  setAuto("#cic-longao-ini", l0);
+  setAuto("#cic-longao-pico", Math.max(l0, mtb ? 3 : 4));
+  if (!CAMPOS_MANUAIS.has("#cic-metrica")) $("#cic-metrica").value = DADOS.ftp ? "ftp" : "fc";
+  const t = [DADOS.ftp ? `FTP ${DADOS.ftp} W` : "sem FTP no TP", DADOS.threshold_hr ? `FC de limiar ${DADOS.threshold_hr} bpm` : "sem FC de limiar no TP"];
+  $("#cic-limiares").textContent = t.join(" · ") + (b.horas_semana ? ` · pedalou ${String(b.horas_semana).replace(".", ",")} h/semana nas últimas 4 semanas` : "");
+}
+function faseCiclismoDaSemana(w) {
+  const r = (CIC_PLANO || []).find((x) => x.semana === w);
+  return r || { semana: w, fase: "Base", horas: null, longao_h: null, leve: false };
+}
+async function pintarPlanoCiclismo() {
+  const box = $("#plano-ciclismo");
+  if (!box || modalidade() !== "ciclismo" || !DADOS || !$("#inicio").value || !$("#fim").value) return;
+  try {
+    const r = await api("/api/ciclismo/plano", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inicio: $("#inicio").value, fim: $("#fim").value, ciclismo: cicPedido() }) });
+    CIC_PLANO = r.semanas;
+  } catch (e) { $("#cic-status").textContent = "Não deu para montar o plano: " + e.message; return; }
+  const fmt = (iso) => iso.split("-").reverse().slice(0, 2).join("/");
+  const num = (v) => (v == null ? "" : v);
+  box.innerHTML = `<div class="grade-wrap"><table class="zonas plano-edit"><tr><td>sem</td><td>início</td><td>fase</td><td>horas</td><td>longão</td><td></td></tr>` +
+    CIC_PLANO.map((x) => {
+      const m = CIC_MANUAL[x.semana] || {};
+      return `<tr class="${x.manual ? "manual" : ""}"><td class="p-idx">${x.semana}</td><td class="p-data">${fmt(x.inicio)}</td>
+        <td><select class="cic-plano${m.fase ? " manual" : ""}" data-k="fase" data-w="${x.semana}">${FASES_CIC.map((f) =>
+          `<option ${f === x.fase ? "selected" : ""}>${f}</option>`).join("")}</select></td>
+        <td><input class="cic-plano${m.horas ? " manual" : ""}" data-k="horas" data-w="${x.semana}" type="number" step="0.25" min="0" value="${num(x.horas)}"> h</td>
+        <td><input class="cic-plano${m.longao_h != null ? " manual" : ""}" data-k="longao_h" data-w="${x.semana}" type="number" step="0.25" min="0" value="${num(x.longao_h)}" placeholder="—"> h</td>
+        <td><small>${x.leve ? "leve" : ""}</small></td></tr>`;
+    }).join("") + `</table></div>` +
+    (Object.keys(CIC_MANUAL).length ? `<button type="button" class="ghost mini" id="cic-soltar">voltar tudo ao automático</button>` : "");
+  document.dispatchEvent(new CustomEvent("fases-mudou"));
+}
+function agendarPlanoCiclismo() {
+  if (modalidade() !== "ciclismo") return;
+  clearTimeout(_cicTimer);
+  _cicTimer = setTimeout(async () => {
+    _cicTimer = null;
+    await pintarPlanoCiclismo();
+    reaplicarSugestaoCiclismo();
+  }, 450);
+}
+function cicManual(w, k, v) {
+  CIC_MANUAL[w] = { ...(CIC_MANUAL[w] || {}) };
+  if (v === "" || v == null) delete CIC_MANUAL[w][k]; else CIC_MANUAL[w][k] = k === "fase" ? v : +v;
+  if (!Object.keys(CIC_MANUAL[w]).length) delete CIC_MANUAL[w];
+  agendarPlanoCiclismo();
+}
+// a fase mudou: os dias que o treinador não mexeu seguem a sugestão da nova fase
+function reaplicarSugestaoCiclismo() {
+  document.querySelectorAll("#dias select[data-dia]").forEach((sel) => {
+    const w = +sel.dataset.semana, d = +sel.dataset.dia;
+    if (eManual(w, d) || !sel.value) return;
+    const novo = (sugestaoCiclismo(w, diasEscolhidos()) || {})[d];
+    if (novo && novo !== sel.value) { sel.value = novo; sel.classList.toggle("ativo", true); }
+  });
+  document.dispatchEvent(new CustomEvent("fases-mudou"));
+}
+$("#plano-ciclismo").addEventListener("change", (e) => {
+  const el = e.target.closest(".cic-plano"); if (!el) return;
+  cicManual(+el.dataset.w, el.dataset.k, el.value);
+});
+$("#plano-ciclismo").addEventListener("click", (e) => {
+  if (e.target.id !== "cic-soltar") return;
+  CIC_MANUAL = {}; agendarPlanoCiclismo();
+});
+document.addEventListener("input", (e) => { if (e.target.classList.contains("cic-campo")) agendarPlanoCiclismo(); });
+document.addEventListener("change", (e) => {
+  if (e.target.classList.contains("cic-campo")) agendarPlanoCiclismo();
+  if (e.target.id === "cic-metrica") CAMPOS_MANUAIS.add("#cic-metrica");
+  if (e.target.id === "cic-disciplina") { cicPadroes(); agendarPlanoCiclismo(); }
+});
+// sessões de qualidade por fase e disciplina (a grade é só o ponto de partida)
+// só tipos com ensaio em ciclistas entram sozinhos (sweet spot, over/under e XCO ficam para a escolha
+// do treinador); estrada puxa limiar longo e longão, MTB puxa 30/15, sprint e torque em subida
+const POOL_CIC = {
+  estrada: { Base: ["cic_tempo", "cic_limiar"], "Construção": ["cic_vo2", "cic_limiar", "cic_3015"],
+             "Específico": ["cic_limiar", "cic_vo2", "cic_tempo", "cic_3015"], Polimento: ["cic_vo2", "cic_3015"] },
+  mtb: { Base: ["cic_tempo", "cic_torque"], "Construção": ["cic_vo2", "cic_3015", "cic_sprint", "cic_limiar"],
+         "Específico": ["cic_3015", "cic_sprint", "cic_vo2", "cic_torque"], Polimento: ["cic_3015", "cic_vo2"] },
+};
+function sugestaoCiclismo(w, dias) {
+  dias = (dias && dias.length ? dias : [1, 3, 5, 6]).slice().sort((a, b) => a - b);
+  const p = faseCiclismoDaSemana(w), disc = $("#cic-disciplina").value === "mtb" ? "mtb" : "estrada";
+  const mapa = {};
+  const fimSemana = dias.filter((d) => d >= 5);
+  const diaLongo = dias.length >= 2 ? (fimSemana.length ? Math.max(...fimSemana) : Math.max(...dias)) : null;
+  const semLongao = ["Prova", "Recuperação"].includes(p.fase);
+  if (diaLongo != null) mapa[diaLongo] = semLongao ? "cic_endurance" : "cic_longao";
+  const restantes = dias.filter((d) => d !== diaLongo);
+  let nQual = p.leve || semLongao ? 0 : ["Base", "Polimento"].includes(p.fase) ? 1 : 2;
+  nQual = Math.min(nQual, Math.max(restantes.length - 1, restantes.length >= 2 ? 1 : 0));
+  const pool = (POOL_CIC[disc][p.fase] || POOL_CIC[disc]["Construção"]);
+  const off = (w - 1 + sementeAtleta()) % pool.length;
+  const quals = [];
+  for (let i = 0; quals.length < nQual && i < pool.length; i++) {
+    const t = pool[(off + i) % pool.length];
+    if (!quals.includes(t)) quals.push(t);
+  }
+  const distC = (a, b) => { const x = Math.abs(a - b); return Math.min(x, 7 - x); };
+  const fortes = diaLongo != null && !semLongao ? [diaLongo] : [];
+  const ordem = [...restantes].sort((a, b) => (diaLongo == null ? a - b : distC(b, diaLongo) - distC(a, diaLongo)));
+  let qi = 0;
+  ordem.forEach((d) => { if (qi < quals.length && !fortes.some((f) => distC(d, f) === 1)) { mapa[d] = quals[qi++]; fortes.push(d); } });
+  let tec = disc === "mtb" && ["Base", "Construção"].includes(p.fase) && !p.leve;
+  ordem.forEach((d) => {
+    if (mapa[d]) return;
+    if (tec) { mapa[d] = "cic_tecnica"; tec = false; }
+    else mapa[d] = p.leve || p.fase === "Recuperação" ? "cic_leve" : "cic_endurance";
+  });
+  return mapa;
+}
+// bloco de ciclismo: nada de prova de corrida, km, teste de limiar ou plano de corrida no motor
+function payloadCiclismo() {
+  return { modalidade: "ciclismo", ciclismo: cicPedido(), so_forca: false, prova: null, prova_data: null,
+    prova_nome: null, prova_km: null, provas: [], taper_ctl: false, teste_limiar: "nenhum", min_km_treino: null,
+    semana_max_km: null, semana_min: null, longo_max_km: null, longo_min_km: null, seguir_periodizacao: false };
+}
+
 // -- 3. previa -------------------------------------------------------------
 $("#gerar").onclick = async () => {
   const th = thresholdEscolhido();
   const soForca = modalidade() === "forca";
-  if (!th && !soForca) { alert("Defina um pace de limiar valido (ex: 6:13)."); return; }
+  const soCiclismo = modalidade() === "ciclismo";
+  if (!th && !soForca && !soCiclismo) { alert("Defina um pace de limiar valido (ex: 6:13)."); return; }
 
   const semanas_tipos = {};
   document.querySelectorAll("#dias select[data-dia]").forEach((s) => {
@@ -1605,6 +1770,7 @@ $("#gerar").onclick = async () => {
         seguir_periodizacao: !!(DADOS.periodizacao &&
           $("#seguir-plano") && $("#seguir-plano").checked),
         ...(soForca ? payloadSoForca() : {}),
+        ...(soCiclismo ? payloadCiclismo() : {}),
       }),
     });
     pintarPrevia();
@@ -1629,8 +1795,10 @@ function payloadSoForca() {
 // mover, trocar ou excluir na prévia: força nunca apaga a corrida que já está no plano
 function conflitosValidos() {
   return (PREVIA.conflitos || []).filter((c) =>
-    PREVIA.sessoes.some((s) => s.data === c.data && !!s.forca === !!c.forca));
+    PREVIA.sessoes.some((s) => s.data === c.data &&
+      (c.esporte ? esporteDe(s) === c.esporte : !!s.forca === !!c.forca)));
 }
+function esporteDe(s) { return s.forca ? "forca" : s.bike ? "bike" : "corrida"; }
 
 function pintarPrevia() {
   $("#resumo-semanas").classList.add("oculto");
@@ -1696,12 +1864,12 @@ function pintarPrevia() {
           : `<div class="grafico gforca"><svg><use href="#ic-forca"/></svg></div>`;
         const corpo = s.forca
           ? `<div class="num">${s.forca.exercicios} exercícios · ${s.forca.series} séries · ${s.minutos} min</div>${exs}`
-          : `<div class="num">${s.bike ? "" : s.km + " km · "}${s.minutos} min${lim}</div>${svg(s.desenho)}`;
+          : `<div class="num">${s.bike ? "" : s.km + " km · "}${s.minutos} min${s.tss ? ` · TSS ${s.tss}` : ""}${lim}</div>${svg(s.desenho)}`;
         return `<div class="treino compacta ${s.recuperacao ? "recup" : ""}" data-i="${i}" draggable="true" title="Arraste para outro dia">
           <small class="tdia">${a} ${s.data.slice(8, 10)}/${s.data.slice(5, 7)}</small>
           <b>${s.titulo}${s.fixado ? ' <span class="tag-edit">definido</span>' : ""}${s.editado ? ' <span class="tag-edit">editado</span>' : s.ajustado ? ' <span class="tag-edit">ajustado</span>' : ""}${s.movido ? ' <span class="tag-edit">movido</span>' : ""}${s.teste ? ' <span class="tag-edit teste">teste</span>' : ""}</b>
           ${s.nota ? `<div class="nota-prev" title="${s.nota.replace(/"/g, "&quot;")}"><svg><use href="#ic-nota"/></svg> ${s.nota.length > 46 ? s.nota.slice(0, 46) + "…" : s.nota}</div>` : ""}
-          ${s.forca ? corpo : `<div class="num">${s.bike ? "" : s.km + " km · "}${s.minutos} min${lim}</div>${svg(s.desenho)}`}
+          ${s.forca ? corpo : `<div class="num">${s.bike ? "" : s.km + " km · "}${s.minutos} min${s.tss ? ` · TSS ${s.tss}` : ""}${lim}</div>${svg(s.desenho)}`}
           <div class="card-acoes"><button class="ghost trocar" data-i="${i}" title="${s.forca ? "Editar os exercícios deste dia" : "Trocar ou editar este treino"}"><svg><use href="#ic-editar"/></svg>${s.forca ? "exercícios" : "editar"}</button><button class="ghost excluir" data-i="${i}" title="Excluir este treino da prévia" aria-label="Excluir este treino">×</button></div>
         </div>`;
         }).join("");
@@ -1721,7 +1889,9 @@ function pintarPrevia() {
           <b>Semana ${w}</b>
           <span>${fmt(sess[0][0].data)} – ${fmt(sess[sess.length - 1][0].data)}</span>
           ${rot ? `<span class="fase">${rot}</span>` : ""}
-          <span class="tot">${info.km ? `${info.km} km · ` : ""}${fmtHoras(info.minutos)}</span>
+          <span class="tot">${modalidade() === "ciclismo"
+            ? `bike ${fmtHoras(info.min_bike || 0)}${info.horas_plano ? ` de ${String(info.horas_plano).replace(".", ",")} h no plano` : ""} · TSS ${info.tss || 0}`
+            : `${info.km ? `${info.km} km · ` : ""}${fmtHoras(info.minutos)}`}</span>
           ${(() => {
             const runs = sess.map(([x]) => x).filter(ehCorridaDoTeto);
             const lgs = runs.filter((x) => /^longo/.test(x.tipo || "") || /^(Longo|Rodagem longa)/.test(x.titulo || ""));
@@ -1748,6 +1918,10 @@ function recalcSemanas() {
     const w = (por[s.semana] ??= { semana: s.semana, km: 0, minutos: 0, km_corrida: 0,
       recuperacao: s.recuperacao, sessoes: 0, teto: tetos[s.semana] ?? null });
     w.km += s.km; w.minutos += s.minutos; w.sessoes++;
+    w.tss = (w.tss || 0) + (s.tss || 0);
+    if (s.bike) w.min_bike = (w.min_bike || 0) + s.minutos;
+    const pc = (PREVIA.plano_ciclismo || []).find((r) => r.semana === s.semana);
+    if (pc) { w.horas_plano = pc.horas; w.recuperacao = !!pc.leve; }
     if (ehCorridaDoTeto(s)) w.km_corrida += s.km;
     if (s.fase && (!w.fase || (w.faseForca && !s.forca))) { w.fase = s.fase; w.faseForca = !!s.forca; }
   });
@@ -1820,6 +1994,17 @@ const CAMPOS = {
     ["ativ_sup_a","Força · ativação de membros superiores A"],["ativ_sup_b","Força · ativação de membros superiores B"],
     ["descarga","Descarga — leve"]]}]],
 };
+Object.assign(CAMPOS, {
+  cic_endurance: [["minutos","minutos",90]], cic_leve: [["minutos","minutos",45]],
+  cic_longao: [["minutos","minutos",180],["final_min","bloco final (min)",0]],
+  cic_tempo: [["blocos","blocos",5],["minutos","min/bloco",12]], cic_sweet: [["blocos","blocos",3],["minutos","min/bloco",12]],
+  cic_limiar: [["blocos","blocos",2],["minutos","min/bloco",20]],
+  cic_over_under: [["sets","séries",3],["ciclos","ciclos",3],["over_min","acima (min)",1],["under_min","abaixo (min)",2]],
+  cic_vo2: [["reps","tiros",4],["minutos","min/tiro",8]], cic_3015: [["series","séries",3],["reps","repetições",13]],
+  cic_sprint: [["reps","sprints",6],["segundos","segundos",30]], cic_torque: [["reps","blocos",6],["minutos","min/bloco",5]],
+  cic_xco: [["series","séries",3],["reps","esforços",6],["forte_s","forte (s)",40],["firme_s","firme (s)",80]],
+  cic_tecnica: [["minutos","minutos",75]], cic_teste_ftp: [],
+});
 const FORCA_TIPOS = ["forca","forca_inferior","forca_superior","forca_empurrar","forca_puxar","forca_core",
   "forca_pliometria","forca_estab_core","forca_ativ_gluteo","forca_ativ_superiores"];
 FORCA_TIPOS.forEach((t) => { CAMPOS[t] = CAMPOS.forca; });
@@ -1835,7 +2020,9 @@ document.addEventListener("change", (e) => {
 });
 function tiposVisiveis() {
   const m = modalidade();
-  return TIPOS.filter(([v]) => !v || m === "mista" || (m === "forca") === FORCA_TIPOS.includes(v));
+  const cic = (v) => v.startsWith("cic_");
+  return TIPOS.filter(([v]) => !v || (m === "ciclismo" ? cic(v) || FORCA_TIPOS.includes(v)
+    : !cic(v) && (m === "mista" || (m === "forca") === FORCA_TIPOS.includes(v))));
 }
 
 function tipoConcreto(s) {
@@ -2445,6 +2632,7 @@ $("#lista-treinos").onclick = (e) => {
     });
     if (FORCA_TIPOS.includes(tipo)) params.objetivo = forcaObjetivo();
     if (modalidade() === "forca") params.fase = s.fase;
+    if (tipo.startsWith("cic_")) Object.assign(params, paramsCiclismo());
     carregando("gerando o treino novo...");
     try {
       const r = await api("/api/sessao", {
@@ -2663,6 +2851,7 @@ function abrirEditorNovo(cel) {
     });
     if (FORCA_TIPOS.includes(tipo)) params.objetivo = forcaObjetivo();
     if (modalidade() === "forca") params.fase = cel.dataset.fase;
+    if (tipo.startsWith("cic_")) Object.assign(params, paramsCiclismo());
     carregando("gerando o treino novo...");
     try {
       const r = await api("/api/sessao", {
@@ -2774,6 +2963,7 @@ $("#modalidade").addEventListener("change", () => {
   const m = modalidade();
   $("#so-forca").classList.toggle("oculto", m !== "mista");
   document.body.classList.toggle("modo-forca", m === "forca");
+  document.body.classList.toggle("modo-ciclismo", m === "ciclismo");
   // a grade é refeita do zero; a prévia da modalidade anterior não vale mais
   MANUAIS = {}; FIXOS = {};
   PREVIA = null;
@@ -2783,6 +2973,11 @@ $("#modalidade").addEventListener("change", () => {
   $("#sec-previa").classList.add("oculto");
   $("#publicar").disabled = true;
   pintarPlanoForca();
+  if (m === "ciclismo" && DADOS) {
+    cicPadroes();
+    pintarPlanoCiclismo().then(() => { montarDias(); document.dispatchEvent(new CustomEvent("fases-mudou")); });
+    return;
+  }
   if (DADOS) { montarDias(); document.dispatchEvent(new CustomEvent("fases-mudou")); }
 });
 $("#so-forca").onclick = () => {

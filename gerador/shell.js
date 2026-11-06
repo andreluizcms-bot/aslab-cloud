@@ -9,7 +9,9 @@
       "ritmo_prova", "over_under", "piramide", "fartlek", "progressivo", "corre_anda"],
     longo: ["longo", "longo_continuo", "longo_trocas", "longo_bloco", "longo_progressivo", "longo_alternado", "longo_surges"],
     rodagem: ["rodagem", "rodagem_strides", "rodagem_leve"],
-    bike: ["bike_rodagem", "bike_intervalado", "bike_longa"],
+    bike: ["bike_rodagem", "bike_intervalado", "bike_longa", "cic_endurance", "cic_leve", "cic_longao", "cic_tecnica"],
+    qualbike: ["cic_tempo", "cic_sweet", "cic_limiar", "cic_over_under", "cic_vo2", "cic_3015", "cic_sprint",
+      "cic_torque", "cic_xco", "cic_teste_ftp"],
     forca: ["forca", "forca_inferior", "forca_superior", "forca_empurrar", "forca_puxar", "forca_core",
       "forca_pliometria", "forca_estab_core", "forca_ativ_gluteo", "forca_ativ_superiores"],
   };
@@ -17,6 +19,7 @@
   const dados = () => (typeof DADOS !== "undefined" ? DADOS : null);
   const previa = () => (typeof PREVIA !== "undefined" ? PREVIA : null);
   const soForca = () => typeof modalidade === "function" && modalidade() === "forca";
+  const ciclismo = () => typeof modalidade === "function" && modalidade() === "ciclismo";
 
   // ---- passos --------------------------------------------------------------
   const secao = (p) => $(`.passo[data-passo="${p}"]`);
@@ -45,7 +48,7 @@
     $("#carregar").classList.toggle("primario", !temAtleta);
     $("#carregar").classList.toggle("secundario", temAtleta);
     $("#tr-atleta").textContent = temAtleta ? dados().nome || "carregado" : "escolha na barra";
-    $("#tr-bloco").textContent = soForca() ? "datas e fases" : "datas e prova";
+    $("#tr-bloco").textContent = soForca() ? "datas e fases" : ciclismo() ? "datas e horas" : "datas e prova";
     botao("atleta").classList.toggle("feito", temAtleta);
     botao("bloco").classList.toggle("feito", temAtleta && !!$("#inicio").value && !!$("#fim").value);
     const nSel = $$("#dias select[data-dia]").filter((s) => s.value).length;
@@ -86,6 +89,16 @@
       const sel = row.querySelector("select"); if (!sel) return;
       const w = +sel.dataset.semana;
       try {
+        if (ciclismo()) {              // ciclismo: fase e horas do plano de ciclismo
+          const p = faseCiclismoDaSemana(w);
+          row.dataset.fase = p.fase; row.classList.toggle("leve", !!p.leve);
+          row.classList.toggle("manual", !!(CIC_MANUAL[w] && CIC_MANUAL[w].fase));
+          const fo = row.querySelector(".cic-fase-sel"), t = `automática · ${p.fase}`;
+          if (fo && fo.options[0].textContent !== t) fo.options[0].textContent = t;
+          const sk = row.querySelector(".sem-km"), tk = p.horas ? `${String(p.horas).replace(".", ",")} h no plano` : "";
+          if (sk && sk.textContent !== tk) sk.textContent = tk;
+          return;
+        }
         if (soForca()) {               // só força: a linha mostra a fase de força, sem km
           row.dataset.fase = faseForcaDaSemana(w); row.classList.remove("leve");
           row.classList.toggle("manual", !!(FASES[w] && FASES[w].forca));
@@ -142,11 +155,12 @@
       const seg = new Date(ini); seg.setDate(seg.getDate() + 7 * (w - 1));
       const iso = seg.toISOString().slice(0, 10);
       const fim = new Date(seg); fim.setDate(fim.getDate() + 6);
-      const f = f0 ? { fase: faseForcaDaSemana(w), leve: false } : faseDaSemana(w);
+      const pc = ciclismo() ? faseCiclismoDaSemana(w) : null;
+      const f = pc ? { fase: pc.fase, leve: pc.leve } : f0 ? { fase: faseForcaDaSemana(w), leve: false } : faseDaSemana(w);
       const sem = plano ? plano.semanas.find((x) => x.inicio === iso) : null;
       const fimIso = fim.toISOString().slice(0, 10);
       const pvs = (typeof provasDoBloco === "function" ? provasDoBloco() : []).filter((p) => p.date >= iso && p.date <= fimIso);
-      semanas.push({ w, iso, fase: f.fase, leve: f.leve, km: sem ? +sem.km || 0 : 0,
+      semanas.push({ w, iso, fase: f.fase, leve: f.leve, km: pc ? +pc.horas || 0 : sem ? +sem.km || 0 : 0, horas: !!pc,
         prova: prova && prova >= iso && prova <= fimIso,
         prio: pvs.some((p) => p.prio === "A") ? "A" : pvs.some((p) => p.prio === "B") ? "B" : pvs.some((p) => p.prio === "C") ? "C" : "",
         pnomes: pvs.map((p) => `${p.prio}: ${p.name}`).join(" · ") });
@@ -156,13 +170,14 @@
     faixa.innerHTML = semanas.map((s) => {
       const h = f0 ? ALTURA_FASE[s.fase] || 60 : s.km ? Math.max(18, Math.round(s.km / max * 100)) : (s.leve ? 35 : 60);
       return `<button type="button" class="ciclo-sem ${s.leve ? "leve" : ""} ${s.w === ativa ? "atual" : ""}"
-        data-fase="${s.fase}" data-w="${s.w}" title="Semana ${s.w} · ${s.fase}${s.leve ? " (leve)" : ""}${s.km ? " · " + s.km + " km" : ""}${s.pnomes ? " · " + s.pnomes : ""}">
-        <small>${s.w}${s.km ? ` · ${s.km} km` : ""}</small>${s.prova || s.prio === "A" ? '<svg class="flag"><use href="#ic-bandeira"/></svg>' : s.prio ? `<small class="pflag ${s.prio.toLowerCase()}">${s.prio}</small>` : ""}<div class="barra" style="height:${h}%"></div></button>`;
+        data-fase="${s.fase}" data-w="${s.w}" title="Semana ${s.w} · ${s.fase}${s.leve ? " (leve)" : ""}${s.km ? " · " + s.km + (s.horas ? " h" : " km") : ""}${s.pnomes ? " · " + s.pnomes : ""}">
+        <small>${s.w}${s.km ? ` · ${s.km} ${s.horas ? "h" : "km"}` : ""}</small>${s.prova || s.prio === "A" ? '<svg class="flag"><use href="#ic-bandeira"/></svg>' : s.prio ? `<small class="pflag ${s.prio.toLowerCase()}">${s.prio}</small>` : ""}<div class="barra" style="height:${h}%"></div></button>`;
     }).join("");
     const fases = [...new Set(semanas.map((s) => s.fase))];
     const cor = { Base: "var(--f-base)", "Específico": "var(--f-esp)", Polimento: "var(--f-pol)", Prova: "var(--f-prova)",
       "Adaptação": "var(--teal2)", "Força máxima": "var(--coral)", "Acumulação": "var(--ambar)",
-      "Pré-competitivo": "var(--verde)", "Competitivo": "var(--verm)", "Descarga": "var(--f-leve)" };
+      "Pré-competitivo": "var(--verde)", "Competitivo": "var(--verm)", "Descarga": "var(--f-leve)",
+      "Construção": "var(--ambar2)", "Recuperação": "var(--f-leve)" };
     $("#ciclo-legenda").innerHTML = fases.map((f) => `<span><i style="background:${cor[f] || "var(--f-leve)"}"></i>${f}</span>`).join("")
       + (semanas.some((s) => s.leve) ? `<span><i style="background:var(--f-leve)"></i>leve</span>` : "");
   }
@@ -185,6 +200,11 @@
     $("#res-sub").textContent = !d ? "nenhum atleta" : soForca() ? "periodização de força"
       : d.periodizacao ? `ciclo: ${d.periodizacao.nome}` : "sem periodização no Lab";
     $("#res-objetivo").textContent = d ? (forcaObjetivo() === "hipertrofia" ? "Hipertrofia" : "Performance") : "—";
+    if (ciclismo()) {
+      $("#res-sub").textContent = `ciclo de ciclismo · ${$("#cic-disciplina").value === "mtb" ? "mountain bike" : "estrada"}`;
+      $("#res-cic").innerHTML = d ? `${$("#cic-metrica").value === "ftp" ? "potência" : "FC"}<small>${$("#cic-metrica").value === "ftp" ? (d.ftp ? `FTP ${d.ftp} W` : "sem FTP no TP") : (d.threshold_hr ? `limiar ${d.threshold_hr} bpm` : "sem FC de limiar")}</small>` : "—";
+      $("#res-cic-semana").innerHTML = $("#cic-horas-pico").value ? `${$("#cic-horas-pico").value} h<small>longão até ${$("#cic-longao-pico").value || "—"} h</small>` : "—";
+    }
     const n = (d && typeof nSemanasPeriodo === "function" && $("#inicio").value) ? nSemanasPeriodo() : null;
     $("#res-semanas").textContent = n ?? "—";
     $("#res-periodo").innerHTML = (d && $("#inicio").value) ? `${fmtBR2($("#inicio").value)}<small>até ${fmtBR2($("#fim").value)}</small>` : "—";
