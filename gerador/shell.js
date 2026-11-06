@@ -210,7 +210,8 @@
     const n = (d && typeof nSemanasPeriodo === "function" && $("#inicio").value) ? nSemanasPeriodo() : null;
     $("#res-semanas").textContent = n ?? "—";
     $("#res-periodo").innerHTML = (d && $("#inicio").value) ? `${fmtBR2($("#inicio").value)}<small>até ${fmtBR2($("#fim").value)}</small>` : "—";
-    const pd = $("#prova-data").value, po = $("#prova").value, pn = $("#prova-nome").value;
+    const pd = $("#prova-data").value, pn = $("#prova-nome").value;
+    const po = typeof rotuloObjetivo === "function" ? rotuloObjetivo() : $("#prova").value;
     $("#res-prova").innerHTML = pd ? `${fmtBR2(pd)}<small>${[po, pn].filter(Boolean).join(" · ") || "sem objetivo"}</small>` : (po || "—");
     $("#res-longo").innerHTML = $("#longo-max").value
       ? `${$("#longo-max").value} km${$("#longo-min").value ? `<small>menor ${$("#longo-min").value} km</small>` : ""}` : "—";

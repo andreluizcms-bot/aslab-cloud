@@ -229,8 +229,11 @@
             <label>Objetivo <select id="prova">
               <option value="">—</option><option value="5k">5 km</option>
               <option value="10k">10 km</option><option value="21k">21 km</option>
-              <option value="42k">42 km</option>
+              <option value="42k">42 km</option><option value="outra">Outra distância</option>
             </select></label>
+            <label id="lbl-prova-km" class="oculto"
+              title="Distância da prova A. O ciclo usa a estrutura do objetivo mais próximo e o ritmo de prova sai dessa distância">Distância
+              <input type="number" id="prova-km" min="1" max="250" step="0.1" placeholder="km"><u>km</u></label>
             <label>No calendário <select id="prova-cal"><option value="">— carregue o atleta —</option></select></label>
             <label>Dia <input type="date" id="prova-data"
               title="Marca a prova nesse dia: véspera vira ativação, os 5 dias antes recebem corte de volume e os 2 seguintes viram rodagem leve"></label>
@@ -246,6 +249,7 @@
               <option value="4">semana 4</option><option value="5">semana 5</option><option value="6">semana 6</option>
             </select></label>
           <label class="check" style="margin-top:8px" title="Simula CTL/ATL com os treinos gerados e ajusta o corte do polimento para chegar na prova A com a forma (TSB) na faixa alvo"><input type="checkbox" id="taper-ctl" checked> Polimento calibrado pelo CTL real do atleta</label>
+          <p class="dica oculto" id="prova-km-dica" style="margin:6px 0 0"></p>
           <div id="provas-bloco" class="provas-bloco oculto"></div>
         </div>
 

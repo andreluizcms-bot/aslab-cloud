@@ -61,80 +61,295 @@ function pintarProvasCal() {
   if (!provas.length) {
     sel.innerHTML = `<option value="">— nenhuma prova no calendário —</option>`; return;
   }
-  sel.innerHTML = `<option value="">— escolher do calendário —</option>` +
+  sel.innerHTML = `<option value="">— escolher da lista —</option>` +
     provas.map((p, i) => {
-      const km = p.km ? ` · ${p.km >= 40 ? "42k" : p.km >= 19 ? "21k" : p.km.toFixed(0) + " km"}` : "";
+      const k = kmDaProva(p);
+      const km = k ? ` · ${+(+k).toFixed(1)} km` : "";
       const prio = p.prio ? ` [${p.prio}]` : "";
       return `<option value="${i}">${fmtBR(p.date)} — ${p.name}${km}${prio}</option>`;
     }).join("");
 }
-// ---- provas B e C dentro do bloco (a prova A é a do campo "Dia") ----
-let PROVAS_PRIO = {};          // {date: "A"|"B"|"C"|"fora"} escolhido pelo treinador
+
+// ---- objetivo: 5, 10, 21, 42 km ou outra distância digitada ----
+const KM_OBJ = { "5k": 5, "10k": 10, "21k": 21.1, "42k": 42.2 };
+// estrutura de ciclo que o motor usa (a distância digitada cai na mais próxima)
+function objetivoMotor() {
+  const v = $("#prova").value;
+  if (v !== "outra") return v;
+  const km = parseFloat($("#prova-km").value);
+  return objetivoPorKm(km) || (km > 0 ? "5k" : "");
+}
+// distância da prova A: a digitada em "Outra distância" ou a da prova do Dia na lista
+function kmObjetivo() {
+  if ($("#prova").value === "outra") return parseFloat($("#prova-km").value) || null;
+  const c = ((DADOS && DADOS.provas) || []).find((x) => x.date === $("#prova-data").value);
+  return c && kmDaProva(c) ? +kmDaProva(c) : null;
+}
+function rotuloObjetivo() {
+  if ($("#prova").value !== "outra") return $("#prova").value;
+  const km = parseFloat($("#prova-km").value);
+  return km > 0 ? `${+km.toFixed(1)} km` : "";
+}
+function mostrarKmObjetivo() {
+  const outra = $("#prova").value === "outra";
+  $("#lbl-prova-km").classList.toggle("oculto", !outra);
+  const km = parseFloat($("#prova-km").value), obj = objetivoMotor();
+  const dica = $("#prova-km-dica");
+  dica.classList.toggle("oculto", !(outra && km > 0));
+  if (outra && km > 0) dica.textContent = `${+km.toFixed(1)} km: as fases e o polimento seguem o ciclo de ` +
+    `${obj.replace("k", " km")}; o ritmo de prova e a sessão do dia usam os ${+km.toFixed(1)} km.`;
+}
+// escolhe o objetivo pela distância da prova: 5, 10, 21 ou 42 km quando bate, senão "Outra"
+function definirObjetivo(km) {
+  km = parseFloat(km);
+  if (!(km > 0)) return false;
+  const padrao = Object.entries(KM_OBJ).find(([, k]) => Math.abs(k - km) <= (k > 30 ? 0.8 : k > 15 ? 0.6 : 0.3));
+  if (padrao) { $("#prova").value = padrao[0]; $("#prova-km").value = ""; }
+  else { $("#prova").value = "outra"; $("#prova-km").value = +km.toFixed(1); }
+  mostrarKmObjetivo();
+  return true;
+}
+
+// ---- lista de provas do atleta: TP + digitadas à mão, cada uma A, B, C ou ignorar ----
+// A prova A é a do campo "Dia". A lista fica salva por atleta no Lab e as B e C vão
+// para o plano do ciclo; trocar a A não tira a anterior da lista (ela vira B).
+let PROVAS_PRIO = {};          // {date: "B"|"C"|"fora"} escolhido pelo treinador nesta tela
 let PROVAS_KM = {};            // {date: km} digitado pelo treinador: vale mais que o do TP
-const kmDaProva = (p) => (PROVAS_KM[p.date] != null ? PROVAS_KM[p.date] : p.km);
+const kmDaProva = (p) => (PROVAS_KM[p.date] != null ? PROVAS_KM[p.date]
+  : p.km_salvo != null ? p.km_salvo : p.km);
+function prioDe(p) {
+  if (p.date === $("#prova-data").value) return "A";
+  const e = PROVAS_PRIO[p.date] || p.escolha;
+  if (e === "A") return "B";                     // era a A e outra prova virou a A
+  if (e) return e;
+  return (p.prio || "").toUpperCase() === "C" ? "C" : "B";
+}
 function provasDoBloco() {
   if (modalidade() === "forca") return [];     // bloco só de força não olha prova
   const ini = $("#inicio").value, fim = $("#fim").value, a = $("#prova-data").value;
   const out = [];
-  if (a) out.push({ date: a, name: $("#prova-nome").value || "Prova", prio: "A" });
+  if (a) out.push({ date: a, name: $("#prova-nome").value || "Prova", prio: "A", km: kmObjetivo() });
   ((DADOS && DADOS.provas) || []).forEach((p) => {
     if (p.date === a || !ini || !fim || p.date < ini || p.date > fim) return;
-    const prio = PROVAS_PRIO[p.date] || ((p.prio || "").toUpperCase() === "C" ? "C" : "B");
+    const prio = prioDe(p);
     if (prio !== "fora") out.push({ date: p.date, name: p.name, prio, km: kmDaProva(p) });
   });
   return out;
 }
+// provas B e C de toda a lista (o ciclo do Lab pode ir além do bloco)
+function provasParaCiclo() {
+  return ((DADOS && DADOS.provas) || []).filter((p) => p.date !== $("#prova-data").value)
+    .map((p) => ({ date: p.date, name: p.name, prio: prioDe(p), km: kmDaProva(p) || null }))
+    .filter((p) => p.prio === "B" || p.prio === "C");
+}
+// a prova do Dia sempre está na lista; digitada à mão entra como prova manual
+function garantirProvaDoDia() {
+  const a = $("#prova-data").value;
+  if (!a || !DADOS) return;
+  DADOS.provas = DADOS.provas || [];
+  let p = DADOS.provas.find((x) => x.date === a);
+  if (!p) {
+    p = { date: a, name: $("#prova-nome").value || "Prova", km: kmObjetivo(), prio: "", origem: "manual",
+          escolha: "A", auto: true };
+    DADOS.provas.push(p);
+    DADOS.provas.sort((x, y) => x.date.localeCompare(y.date));
+  } else if (p.origem === "manual") {
+    if ($("#prova-nome").value) p.name = $("#prova-nome").value;
+    if ($("#prova").value === "outra" && kmObjetivo()) p.km = kmObjetivo();
+  }
+}
+// a prova do Dia mudou: a anterior continua na lista como B (a criada só pelo Dia sai)
+let DIA_ANTERIOR = "";
+function provaDoDiaMudou() {
+  const ant = DIA_ANTERIOR, a = $("#prova-data").value;
+  if (ant && ant !== a && DADOS && DADOS.provas) {
+    const p = DADOS.provas.find((x) => x.date === ant);
+    if (p && p.auto) DADOS.provas = DADOS.provas.filter((x) => x !== p);
+    else if (p) PROVAS_PRIO[ant] = "B";
+  }
+  DIA_ANTERIOR = a;
+  garantirProvaDoDia();
+  pintarProvasCal();
+  pintarProvasBloco();
+  salvarProvasDepois();
+}
 function pintarProvasBloco() {
   const box = $("#provas-bloco"); if (!box) return;
-  const ini = $("#inicio").value, fim = $("#fim").value, a = $("#prova-data").value;
-  const outras = ((DADOS && DADOS.provas) || []).filter((p) => p.date !== a && ini && fim && p.date >= ini && p.date <= fim);
-  box.classList.toggle("oculto", !outras.length);
-  if (!outras.length) { box.innerHTML = ""; return; }
-  box.innerHTML = `<span class="rotulo">Outras provas no período · B vira ritmo de prova com ativação na véspera · C vira rodagem</span>` +
-    outras.map((p) => {
-      const prio = PROVAS_PRIO[p.date] || ((p.prio || "").toUpperCase() === "C" ? "C" : "B");
-      const km = kmDaProva(p);
-      return `<div class="pv"><b>${fmtBR(p.date)}</b> ${p.name}<small>${p.prio ? "TP: " + p.prio : ""}</small>
-        <label class="pv-km${PROVAS_KM[p.date] != null ? " manual" : ""}" title="Distância da prova. Vem do TP; digite para corrigir">
-          <input type="number" class="km-prova" data-date="${p.date}" min="1" max="250" step="0.1"
-            value="${km ? +(+km).toFixed(1) : ""}" placeholder="?"> km</label>
-        <select class="prio-sel" data-date="${p.date}">${["A","B","C","fora"].map((o) =>
-          `<option value="${o}" ${o === prio ? "selected" : ""}>${o === "fora" ? "ignorar" : "Prova " + o}</option>`).join("")}</select></div>`;
-    }).join("");
+  if (!DADOS) { box.classList.add("oculto"); box.innerHTML = ""; return; }
+  const ini = $("#inicio").value, fim = $("#fim").value;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const lista = (DADOS.provas || []).filter((p) => p.date >= hoje || (ini && p.date >= ini));
+  box.classList.remove("oculto");
+  const linhas = lista.map((p) => {
+    const prio = prioDe(p);
+    const km = kmDaProva(p);
+    const fora = !(ini && fim && p.date >= ini && p.date <= fim);
+    const origem = p.origem === "manual" ? "digitada" : p.prio ? "TP: " + p.prio : "TP";
+    return `<div class="pv${prio === "A" ? " eh-a" : ""}${fora ? " fora-bloco" : ""}${prio === "fora" ? " ignorada" : ""}">
+      <b>${fmtBR(p.date)}</b> ${p.name}<small>${origem}${fora ? " · fora do bloco" : ""}</small>
+      <label class="pv-km${PROVAS_KM[p.date] != null ? " manual" : ""}" title="Distância da prova. Vem do TP ou do que foi digitado; digite para corrigir">
+        <input type="number" class="km-prova" data-date="${p.date}" min="1" max="250" step="0.1"
+          value="${km ? +(+km).toFixed(1) : ""}" placeholder="?"> km</label>
+      <select class="prio-sel" data-date="${p.date}">${["A", "B", "C", "fora"].map((o) =>
+        `<option value="${o}" ${o === prio ? "selected" : ""}>${o === "fora" ? "ignorar" : "Prova " + o}</option>`).join("")}</select>
+      ${p.origem === "manual" && prio !== "A" ? `<button type="button" class="pv-del ghost" data-date="${p.date}" title="Tirar da lista">×</button>` : ""}</div>`;
+  }).join("");
+  box.innerHTML = `<span class="rotulo">Provas do atleta · A manda no ciclo · B tem mini-polimento e dias leves depois, pela distância · C entra sem polimento</span>` +
+    (linhas || `<p class="dica" style="margin:2px 0 6px">Nenhuma prova no TP. Digite abaixo para incluir.</p>`) +
+    `<div class="pv pv-novo">
+      <input type="date" id="pv-n-data" title="Dia da prova">
+      <input type="text" id="pv-n-nome" placeholder="nome da prova">
+      <label class="pv-km"><input type="number" id="pv-n-km" min="1" max="250" step="0.1" placeholder="km"> km</label>
+      <select id="pv-n-prio"><option value="B">Prova B</option><option value="C">Prova C</option><option value="A">Prova A</option></select>
+      <button type="button" class="secundario" id="pv-n-add">Adicionar prova</button></div>` +
+    avisoCicloProvas();
+}
+// o ciclo do Lab já tem o km das semanas com essas provas? Senão, oferece refazer
+function avisoCicloProvas() {
+  const pl = DADOS && DADOS.periodizacao;
+  if (!pl || !pl.semanas || !pl.semanas.length) return "";
+  const ini = pl.semanas[0].inicio;
+  const fimPl = new Date(pl.semanas[pl.semanas.length - 1].inicio + "T12:00"); fimPl.setDate(fimPl.getDate() + 6);
+  const fimIso = fimPl.toISOString().slice(0, 10);
+  const faltam = provasParaCiclo().filter((p) => {
+    if (p.date < ini || p.date > fimIso) return false;
+    const seg = segundaDe(new Date(p.date + "T12:00")).toISOString().slice(0, 10);
+    const w = pl.semanas.find((s) => s.inicio === seg);
+    return w && !(w.obs || "").includes(`prova ${p.prio}: `);
+  });
+  if (!faltam.length) return "";
+  return `<p class="dica pv-aviso">O ciclo do Lab foi montado sem ${faltam.length > 1 ? "as provas" : "a prova"} ` +
+    `${faltam.map((p) => `${p.prio} de ${fmtBR(p.date).slice(0, 5)}`).join(", ")}. ` +
+    `<button type="button" class="secundario" id="pv-encaixar" title="Refaz as semanas do ciclo com a progressão guardada e com as provas: a semana da B ganha o mini-polimento. O que foi mudado à mão na tabela do ciclo volta ao cálculo">Encaixar no ciclo</button></p>`;
+}
+let _salvarProvasT = null;
+function salvarProvasDepois() {
+  clearTimeout(_salvarProvasT);
+  _salvarProvasT = setTimeout(salvarProvas, 500);
+}
+async function salvarProvas() {
+  if (!DADOS || !DADOS.athlete_id) return;
+  const a = $("#prova-data").value;
+  // do TP só vai o que o treinador escolheu; as digitadas vão sempre
+  const provas = (DADOS.provas || []).filter((p) => p.origem === "manual" || p.date === a
+      || PROVAS_PRIO[p.date] || PROVAS_KM[p.date] != null || p.escolha || p.km_salvo != null)
+    .map((p) => ({ date: p.date, name: p.name, km: kmDaProva(p) || null, prio: prioDe(p),
+                   origem: p.origem === "manual" ? "manual" : "tp" }));
+  try {
+    const r = await api("/api/provas/salvar", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ athlete_id: DADOS.athlete_id, provas }),
+    });
+    if (r.periodizacao) { DADOS.periodizacao = r.periodizacao; pintarProvasBloco(); }
+  } catch (e) { console.warn("provas não salvas:", e.message); }
+}
+function mudouProvas() {
+  pintarProvasCal();
+  pintarProvasBloco();
+  salvarProvasDepois();
+  document.dispatchEvent(new CustomEvent("fases-mudou"));
+}
+// vira a prova A do bloco: Dia, Nome e Objetivo vêm dela
+function tornarA(p) {
+  $("#prova-data").value = p.date; $("#prova-nome").value = p.name;
+  definirObjetivo(kmDaProva(p));
+  delete PROVAS_PRIO[p.date];
+  $("#btn-ciclo-prova").disabled = false;
+  provaDoDiaMudou();
+  setAuto("#semana-max", ""); sugerirBloco();
 }
 $("#provas-bloco") && $("#provas-bloco").addEventListener("change", (e) => {
   const ik = e.target.closest(".km-prova");
   if (ik) {                                        // km digitado: fica como o treinador pôs
     const v = parseFloat(ik.value);
     if (v > 0) PROVAS_KM[ik.dataset.date] = v; else delete PROVAS_KM[ik.dataset.date];
-    pintarProvasBloco();
-    document.dispatchEvent(new CustomEvent("fases-mudou"));
+    if (ik.dataset.date === $("#prova-data").value && v > 0) definirObjetivo(v);
+    mudouProvas();
     return;
   }
   const sel = e.target.closest(".prio-sel"); if (!sel) return;
-  if (sel.value === "A") {                         // vira a prova principal do bloco
-    const p = (DADOS.provas || []).find((x) => x.date === sel.dataset.date);
-    $("#prova-data").value = p.date; $("#prova-nome").value = p.name;
-    const obj = objetivoPorKm(kmDaProva(p)); if (obj) $("#prova").value = obj;
-    delete PROVAS_PRIO[p.date];
-    setAuto("#semana-max", ""); sugerirBloco();
-  } else PROVAS_PRIO[sel.dataset.date] = sel.value;
-  pintarProvasBloco();
-  document.dispatchEvent(new CustomEvent("fases-mudou"));
+  const p = (DADOS.provas || []).find((x) => x.date === sel.dataset.date);
+  if (!p) return;
+  if (sel.value === "A") { tornarA(p); return; }
+  PROVAS_PRIO[p.date] = sel.value;
+  if (p.date === $("#prova-data").value) {          // a A deixou de ser A: o bloco fica sem prova A
+    $("#prova-data").value = ""; $("#prova-nome").value = "";
+    $("#btn-ciclo-prova").disabled = true;
+    DIA_ANTERIOR = "";
+  }
+  mudouProvas();
 });
-["#inicio", "#fim", "#prova-data"].forEach((k) => $(k).addEventListener("change", pintarProvasBloco));
+$("#provas-bloco") && $("#provas-bloco").addEventListener("click", async (e) => {
+  const del = e.target.closest(".pv-del");
+  if (del) {
+    DADOS.provas = (DADOS.provas || []).filter((x) => x.date !== del.dataset.date);
+    delete PROVAS_PRIO[del.dataset.date]; delete PROVAS_KM[del.dataset.date];
+    mudouProvas();
+    return;
+  }
+  if (e.target.closest("#pv-n-add")) {
+    const data = $("#pv-n-data").value, nome = $("#pv-n-nome").value.trim();
+    const km = parseFloat($("#pv-n-km").value) || null, prio = $("#pv-n-prio").value;
+    if (!data) { alert("Coloque o dia da prova."); return; }
+    DADOS.provas = DADOS.provas || [];
+    let p = DADOS.provas.find((x) => x.date === data);
+    if (p) { alert(`Já tem prova em ${fmtBR(data)} na lista (${p.name}).`); return; }
+    p = { date: data, name: nome || "Prova", km, prio: "", origem: "manual", escolha: prio === "A" ? null : prio };
+    DADOS.provas.push(p);
+    DADOS.provas.sort((x, y) => x.date.localeCompare(y.date));
+    if (prio === "A") { tornarA(p); return; }
+    PROVAS_PRIO[data] = prio;
+    mudouProvas();
+    return;
+  }
+  if (e.target.closest("#pv-encaixar")) {
+    const pl = DADOS.periodizacao;
+    carregando("encaixando as provas no ciclo...");
+    try {
+      const r = await api("/api/periodizacao/refazer", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ athlete_id: DADOS.athlete_id, plano_id: pl.id,
+          objetivo: objetivoMotor() || null, prova_km: kmObjetivo(), provas: provasParaCiclo(),
+          ...progressaoPedido(), min_km: parseFloat($("#min-km").value) || null }),
+      });
+      DADOS.periodizacao = r.periodizacao;
+      pintarPlano();
+      pintarProvasBloco();
+      sugerirBloco();
+      statusProgressao("Provas encaixadas no ciclo: a semana de cada prova B ganhou o mini-polimento." + (r.aviso ? " " + r.aviso : ""));
+    } catch (err) { alert("Não deu para encaixar as provas: " + err.message); } finally { pronto(); }
+  }
+});
+["#inicio", "#fim"].forEach((k) => $(k).addEventListener("change", pintarProvasBloco));
+$("#prova-data").addEventListener("change", provaDoDiaMudou);
+$("#prova-nome").addEventListener("change", () => { garantirProvaDoDia(); pintarProvasBloco(); salvarProvasDepois(); });
+$("#prova-km").addEventListener("input", () => {
+  mostrarKmObjetivo();
+  const a = (DADOS && DADOS.provas || []).find((x) => x.date === $("#prova-data").value);
+  if (a && parseFloat($("#prova-km").value) > 0) { PROVAS_KM[a.date] = parseFloat($("#prova-km").value); }
+});
+$("#prova-km").addEventListener("change", () => {
+  if (!DADOS) return;
+  garantirProvaDoDia(); mudouProvas();
+  setAuto("#semana-max", ""); sugerirBloco();
+});
 
 $("#prova-cal").onchange = () => {
   const p = (DADOS && DADOS.provas || [])[+$("#prova-cal").value];
   if (!p) return;
-  $("#prova-data").value = p.date;
-  $("#prova-nome").value = p.name;
-  const obj = objetivoPorKm(kmDaProva(p));
-  if (obj) $("#prova").value = obj;
-  $("#btn-ciclo-prova").disabled = false;
-  pintarProvasBloco();
-  setAuto("#semana-max", ""); sugerirBloco();      // objetivo mudou: refaz o ponto de partida
+  tornarA(p);
 };
+// restaura a prova A salva para o atleta (a que estava no Dia da última vez)
+function restaurarProvaA() {
+  if (!DADOS || $("#prova-data").value) return;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const a = (DADOS.provas || []).find((p) => p.escolha === "A" && p.date >= hoje);
+  if (!a) return;
+  $("#prova-data").value = a.date; $("#prova-nome").value = a.name;
+  definirObjetivo(kmDaProva(a));
+  $("#btn-ciclo-prova").disabled = false;
+  DIA_ANTERIOR = a.date;
+}
 
 async function anexarForcaBib(ed) {
   const sel = ed.querySelector('#ed-campos [data-k="template"]');
@@ -246,7 +461,7 @@ const PADRAO_BLOCO = {
 // tudo que era do atleta anterior sai da tela: prévia, resultado da publicação,
 // grade, fases, notas, estruturas fixadas, prova, pisos e datas
 function limparEstadoAtleta() {
-  PREVIA = null; NOTAS = {}; FIXOS = {}; FASES = {}; PROVAS_PRIO = {}; PROVAS_KM = {}; MANUAIS = {};
+  PREVIA = null; NOTAS = {}; FIXOS = {}; FASES = {}; PROVAS_PRIO = {}; PROVAS_KM = {}; MANUAIS = {}; DIA_ANTERIOR = "";
   CIC_MANUAL = {}; CIC_PLANO = null;
   CAMPOS_MANUAIS.clear();
   $("#lista-treinos").innerHTML = "";
@@ -256,8 +471,9 @@ function limparEstadoAtleta() {
   $("#sec-previa").classList.add("oculto");
   $("#publicar").disabled = true;
   $("#substituir").checked = true;
-  ["#prova-data", "#prova-nome", "#min-km", "#semana-max", "#semana-min", "#longo-min"].forEach((k) => { $(k).value = ""; });
+  ["#prova-data", "#prova-nome", "#prova-km", "#min-km", "#semana-max", "#semana-min", "#longo-min"].forEach((k) => { $(k).value = ""; });
   $("#prova").value = "";
+  mostrarKmObjetivo();
   $("#btn-ciclo-prova").disabled = true;
   $("#inicio").value = PADRAO_BLOCO.inicio; $("#fim").value = PADRAO_BLOCO.fim;
   $("#progressao").value = PADRAO_BLOCO.progressao;
@@ -275,8 +491,9 @@ $("#carregar").onclick = async () => {
     const trocou = !DADOS || String(DADOS.athlete_id) !== String(id);
     DADOS = await api(`/api/atleta/${id}`);
     if (trocou) limparEstadoAtleta();
-    pintarProvasCal();
     DADOS.athlete_id = id;
+    restaurarProvaA();
+    pintarProvasCal();
     NOTAS = {};
     FIXOS = {};
     pintarPerfil();
@@ -530,7 +747,7 @@ function htmlPlanoCriar() {
   const alvo = cal.find((p) => (new Date(p.date) - hoje) / 864e5 >= 42) || cal[0];
   const provaIso = alvo ? alvo.date : d(prova);
   const nomeCiclo = alvo ? alvo.name : "Ciclo de prova";
-  const obj = $("#prova").value || objetivoPorKm(alvo && kmDaProva(alvo)) || "10k";
+  const obj = objetivoMotor() || objetivoPorKm(alvo && kmDaProva(alvo)) || "10k";
   setTimeout(sugerirCiclo, 0);        // preenche km inicial/pico pelo histórico
   return `
     <h2>Periodização do atleta (ATP do Lab)</h2>
@@ -576,7 +793,7 @@ async function sugerirBloco() {
     // os dois campos são o pico do CICLO inteiro (o que o treinador pede para a
     // periodização); o bloco na tela segue o km e o longo de cada semana do plano
     const ciclo = picosDoCiclo();
-    const tetoObj = { "5k": 14, "10k": 18, "21k": 20, "42k": 34 }[$("#prova").value] || 20;
+    const tetoObj = { "5k": 14, "10k": 18, "21k": 20, "42k": 34 }[objetivoMotor()] || 20;
     setAuto("#semana-max", ciclo.km);
     setAuto("#longo-max", ciclo.longo > 0 ? ciclo.longo
       : Math.min(tetoObj, Math.round(ciclo.km * 0.35 * 2) / 2));
@@ -592,8 +809,9 @@ async function sugerirBloco() {
   try {
     const r = await api("/api/periodizacao/sugestao", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ objetivo: $("#prova").value || null, inicio: $("#inicio").value,
-        prova_data: $("#prova-data").value || null, historico: historicoCompacto() }),
+      body: JSON.stringify({ objetivo: objetivoMotor() || null, inicio: $("#inicio").value,
+        prova_data: $("#prova-data").value || null, historico: historicoCompacto(),
+        prova_km: kmObjetivo(), provas: provasParaCiclo() }),
     });
     if (!$("#semana-max").value) setAuto("#semana-max", r.km_pico);
     const longoTeto = Math.min(r.longo_max, Math.round(r.km_pico * 0.3 * 2) / 2);
@@ -603,7 +821,11 @@ async function sugerirBloco() {
       `maior semana sugerida ${r.km_pico} km, longo até ${longoTeto} km (${r.objetivo}).`;
   } catch (e) { /* silencioso */ }
 }
-$("#prova").addEventListener("change", () => { if (DADOS) { setAuto("#semana-max", ""); sugerirBloco(); } });
+$("#prova").addEventListener("change", () => {
+  mostrarKmObjetivo();
+  if ($("#prova").value === "outra" && !$("#prova-km").value) $("#prova-km").focus();
+  if (DADOS) { garantirProvaDoDia(); mudouProvas(); setAuto("#semana-max", ""); sugerirBloco(); }
+});
 document.addEventListener("change", (e) => {
   if (!DADOS) return;
   if (e.target.id === "seguir-plano" || ((e.target.id === "inicio" || e.target.id === "fim") && planoNoBloco().length)) {
@@ -678,7 +900,7 @@ async function ajustarPlanoAteProva() {
   if (alvo < 2) { alert("A prova é anterior ao início do ciclo."); return; }
   // macrociclo do objetivo: fases, km, longo e sessões-chave por semana
   const cal = (DADOS && DADOS.provas || []).find((p) => p.date === prova);
-  const objetivo = $("#prova").value || objetivoPorKm(cal && kmDaProva(cal)) || "";
+  const objetivo = objetivoMotor() || objetivoPorKm(cal && kmDaProva(cal)) || "";
   const linhasAtuais = [...tab.querySelectorAll("tr")].slice(1);
   const kmIni = +(linhasAtuais[0] && linhasAtuais[0].querySelector(".p-km").value) || null;
   try {
@@ -955,7 +1177,7 @@ async function refazerPlano() {
     const r = await api("/api/periodizacao/refazer", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ athlete_id: DADOS.athlete_id, plano_id: p.id,
-        objetivo: $("#prova").value || null, ...progressaoPedido(), ...picos,
+        objetivo: objetivoMotor() || null, ...progressaoPedido(), ...picos,
         min_km: parseFloat($("#min-km").value) || null }),
     });
     DADOS.periodizacao = r.periodizacao;
@@ -1158,7 +1380,7 @@ function sugestaoGrade(w) {
     return mapa;
   }
   if (!dias.length) return null;
-  const obj = $("#prova").value;
+  const obj = objetivoMotor();
   const { fase, leve } = faseDaSemana(w);
   const sem = sementeAtleta();
 
@@ -1532,7 +1754,7 @@ $("#btn-ciclo-prova").onclick = async () => {
   if (!jaTem) {
     const cal = ((DADOS && DADOS.provas) || []).find((x) => x.date === p);
     const nome = $("#prova-nome").value || (cal && cal.name)
-      || ($("#prova").value ? `Ciclo ${$("#prova").value.replace("k", " km")}` : "Ciclo de prova");
+      || (rotuloObjetivo() ? `Ciclo ${rotuloObjetivo().replace(/k$/, " km")}` : "Ciclo de prova");
     const seg = segundaDe(new Date());
     if (seg.toISOString().slice(0, 10) < new Date().toISOString().slice(0, 10)) seg.setDate(seg.getDate() + 7);
     carregando("criando o ciclo na periodização do atleta...");
@@ -1543,7 +1765,9 @@ $("#btn-ciclo-prova").onclick = async () => {
           athlete_id: DADOS.athlete_id,
           nome, prova_data: p,
           inicio: $("#inicio").value || seg.toISOString().slice(0, 10),
-          objetivo: $("#prova").value || objetivoPorKm(cal && kmDaProva(cal)) || null,
+          objetivo: objetivoMotor() || objetivoPorKm(cal && kmDaProva(cal)) || null,
+          prova_km: kmObjetivo(), prova_nome: $("#prova-nome").value || (cal && cal.name) || null,
+          provas: provasParaCiclo(),
           historico: historicoCompacto(),
           ...progressaoPedido(),
         }),
@@ -1748,11 +1972,10 @@ $("#gerar").onclick = async () => {
         fixos: FIXOS,
         fases: FASES,
         manuais: manuaisPayload(),
-        prova: $("#prova").value || null,
+        prova: objetivoMotor() || null,
         prova_data: $("#prova-data").value || null,
         prova_nome: $("#prova-nome").value || null,
-        prova_km: (() => { const c = ((DADOS.provas) || []).find((x) => x.date === $("#prova-data").value);
-                           return c ? kmDaProva(c) || null : null; })(),
+        prova_km: kmObjetivo(),
         provas: provasDoBloco(),
         taper_ctl: $("#taper-ctl") ? $("#taper-ctl").checked : true,
         teste_limiar: $("#teste-limiar") ? $("#teste-limiar").value : "auto",
@@ -2434,7 +2657,7 @@ async function garantirLongo(semanas) {
         semanas: ws, tetos: PREVIA.tetos || {},
         longo_max_km: $("#longo-max").value ? parseFloat($("#longo-max").value) : null,
         longo_min_km: $("#longo-min").value ? parseFloat($("#longo-min").value) : null,
-        min_km: parseFloat($("#min-km").value) || null, prova: $("#prova").value || null,
+        min_km: parseFloat($("#min-km").value) || null, prova: objetivoMotor() || null,
         sessoes: idx.map(([s]) => s) }),
     });
     r.sessoes.forEach((s, k) => {
@@ -3015,9 +3238,9 @@ $("#btn-ciclo-periodo").onclick = async () => {
   const pd = $("#prova-data").value;
   const provaDia = completo ? (pd && pd > ini && pd <= fim ? pd : fim) : null;
   const cal = provaDia && ((DADOS.provas) || []).find((x) => x.date === provaDia);
-  const objetivo = $("#prova").value || (cal ? objetivoPorKm(kmDaProva(cal)) : "") || null;
+  const objetivo = objetivoMotor() || (cal ? objetivoPorKm(kmDaProva(cal)) : "") || null;
   if (completo && !objetivo) {
-    alert("Escolha o Objetivo (5, 10, 21 ou 42 km) na caixa Prova: ele define o polimento e a semana da prova.");
+    alert("Escolha o Objetivo (5, 10, 21, 42 km ou outra distância) na caixa Prova: ele define o polimento e a semana da prova.");
     return;
   }
   const nomeProva = completo ? ((provaDia === pd && $("#prova-nome").value) || (cal && cal.name.trim()) || "") : "";
@@ -3037,6 +3260,7 @@ $("#btn-ciclo-periodo").onclick = async () => {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ athlete_id: DADOS.athlete_id, plano_id: atual.id, fases_ciclo: fases,
         objetivo, km_pico: km, prova_data: provaDia, fim,
+        prova_km: completo && provaDia === pd ? kmObjetivo() : null, provas: provasParaCiclo(),
         longo_pico: parseFloat($("#longo-max").value) || null,
         min_km: parseFloat($("#min-km").value) || null, ini_auto: true, ...progressaoPedido() }),
     }) : await api("/api/periodizacao/criar", {
@@ -3045,6 +3269,8 @@ $("#btn-ciclo-periodo").onclick = async () => {
         athlete_id: DADOS.athlete_id, nome, inicio: ini, fim, fases_ciclo: fases,
         prova_data: provaDia,
         objetivo,
+        prova_km: completo && provaDia === pd ? kmObjetivo() : null, prova_nome: nomeProva || null,
+        provas: provasParaCiclo(),
         km_pico: km,
         longo_pico: parseFloat($("#longo-max").value) || null,
         min_km: parseFloat($("#min-km").value) || null,

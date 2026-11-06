@@ -567,3 +567,12 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .provas-bloco .pv-km input { width: 64px; padding: 4px 6px; font-size: 12px; }
 .provas-bloco .pv-km.manual input { border-color: var(--coral); box-shadow: inset 2px 0 0 var(--coral); }
 .provas-bloco .pv-km + select { margin-left: 0; }
+.provas-bloco .pv.eh-a b::before { content: "A "; color: var(--coral); }
+.provas-bloco .pv.fora-bloco, .provas-bloco .pv.ignorada { opacity: .6; }
+.provas-bloco .pv-del { padding: 2px 8px; font-size: 14px; line-height: 1; }
+.provas-bloco .pv-novo { flex-wrap: wrap; margin-top: 6px; padding-top: 8px; border-top: 1px dotted var(--linha2); }
+.provas-bloco .pv-novo input[type="date"] { width: auto; }
+.provas-bloco .pv-novo #pv-n-nome { flex: 1 1 160px; min-width: 120px; }
+.provas-bloco .pv-novo .pv-km { margin-left: 0; }
+.provas-bloco .pv-novo select { margin-left: 0; }
+.provas-bloco .pv-aviso { margin: 8px 0 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

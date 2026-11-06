@@ -41,6 +41,13 @@ def aumento_semanal_max(rows):
     return max(((b / a - 1) * 100 for a, b in zip(ks, ks[1:]) if a), default=0.0)
 
 
+def fator_semana_prova_b(km):
+    """Corte do km da semana da prova B (mini-polimento): 15% até 10 km, 20% até a
+    meia, 30% acima. Convenção do treinador; não há estudo sobre prova secundária."""
+    km = float(km or 0)
+    return 0.85 if km <= 10.5 else 0.8 if km <= 21.5 else 0.7
+
+
 def objetivo_por_km(km):
     if not km: return None
     if km >= 40: return "42k"
@@ -90,7 +97,7 @@ def ponto_de_partida(hist, objetivo=None, semanas_build=None):
 def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim=None,
               recup_cada=4, recup_corte_pct=25.0, progressao_max_pct=None,
               longo_pico=None, fases_ciclo=None, ini_auto=False, min_km=None,
-              dias_semana=None, semana_min=None, longo_min=None):
+              dias_semana=None, semana_min=None, longo_min=None, prova_km=None, provas=None):
     """Semanas do ciclo até a prova (e depois dela, se fim > prova):
     [{idx, inicio, fase, km, longo, obs}]. obs traz sessões-chave e "semana leve".
 
@@ -120,7 +127,13 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
     longo_min: menor longo pedido. Nenhum longo de Base/Específico (o da semana
         leve também) fica abaixo dele, e a rampa do longo começa nele ou acima;
         polimento, prova e pós-prova ficam de fora. A semana sobe junto quando
-        não comporta o longo."""
+        não comporta o longo.
+    prova_km: distância da prova A quando não é 5, 10, 21 ou 42 km (o objetivo
+        é a estrutura mais próxima; a semana da prova conta essa distância).
+    provas: [{date, name, prio, km}] - provas B e C do ciclo (a A é prova_data).
+        A semana da B tem mini-polimento (fator_semana_prova_b) e, depois de uma
+        B de 15 km ou mais, a semana seguinte alivia; B ou C de 15 km ou mais é o
+        longo da semana. Polimento, prova, pós-prova e semana leve não mudam."""
     m = MACROS.get(objetivo or PADRAO, MACROS[PADRAO])
     ini = dt.date.fromisoformat(inicio) if isinstance(inicio, str) else inicio
     seg = ini - dt.timedelta(days=ini.weekday())
@@ -211,10 +224,10 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
         elif i == ip:
             # a semana da prova conta a própria prova (com aquecimento) e um
             # volume leve nos outros dias; 40% do pico não cabia nem a prova
-            prova_km = {"5k": 5, "10k": 10, "21k": 21.1, "42k": 42.2}.get(objetivo or PADRAO, 10)
-            aquec = 1.0 if prova_km > 30 else 2.0
-            resto = km_pico * (0.30 if prova_km <= 10 else 0.25)
-            fase, km = "Prova", max(km_pico * 0.40, prova_km + aquec + resto)
+            dist = float(prova_km) if prova_km else {"5k": 5, "10k": 10, "21k": 21.1, "42k": 42.2}.get(objetivo or PADRAO, 10)
+            aquec = 1.0 if dist > 30 else 2.0
+            resto = km_pico * (0.30 if dist <= 10 else 0.25)
+            fase, km = "Prova", max(km_pico * 0.40, dist + aquec + resto)
             obs = "semana da prova: ativação na véspera"
         elif i >= ip - taper:
             k = i - (ip - taper)                                  # 0,1,2 dentro do taper
@@ -244,6 +257,8 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
             obs = f"{obs} · longo {longo:g} km"
         rows.append({"idx": i + 1, "inicio": wseg.isoformat(), "fase": fase,
                      "km": km, "longo": longo, "obs": obs})
+    _encaixar_provas_bc(rows, provas, sm, dist_a=float(prova_km) if prova_km else
+                        {"5k": 5, "10k": 10, "21k": 21.1, "42k": 42.2}.get(objetivo or PADRAO, 10))
     # piso da semana: o longo dela + os outros dias com o mínimo por treino
     if min_km:
         import re as _re
@@ -260,3 +275,49 @@ def gerar_atp(objetivo, inicio, prova_data, km_ini, km_pico, longo_ini=None, fim
             if r["km"] < piso_sem:
                 r["km"] = piso_sem
     return rows
+
+
+def _encaixar_provas_bc(rows, provas, semana_min=0.0, dist_a=10.0):
+    """Marca as provas B e C nas semanas do ciclo e ajusta o km pela regra da B
+    (ver gerar_atp). Mexe só em semanas de Base e Específico que não são leves."""
+    import re as _re
+    if not provas:
+        return
+    por_seg = {r["inicio"]: i for i, r in enumerate(rows)}
+    for p in sorted(provas, key=lambda x: str(x.get("date"))):
+        pr = (p.get("prio") or "").upper()
+        if pr not in ("B", "C"):
+            continue
+        try:
+            d0 = dt.date.fromisoformat(str(p.get("date"))[:10])
+        except ValueError:
+            continue
+        i = por_seg.get((d0 - dt.timedelta(days=d0.weekday())).isoformat())
+        if i is None:
+            continue
+        r = rows[i]
+        try:
+            k = float(p.get("km") or 0) or None
+        except (TypeError, ValueError):
+            k = None
+        kk = k or dist_a
+        nome = (p.get("name") or p.get("nome") or "prova").strip()
+        tag = f"prova {pr}: {nome} {d0:%d/%m}" + (f" ({k:g} km)" if k else "")
+        r["obs"] = f'{r["obs"]} · {tag}' if r["obs"] else tag
+        treino = r["fase"] in ("Base", "Específico")
+        carga = treino and "leve" not in r["obs"]
+        if treino and kk >= 15 and r["longo"] is not None:
+            r["longo"] = None                                  # a prova é o longo da semana
+            r["obs"] = _re.sub(r" · longo [\d.,]+ km", "", r["obs"]) + " · longo = a prova"
+        if treino:                                             # a semana comporta a prova
+            r["km"] = max(r["km"], int(-(-(kk + 4) // 1)))
+        if pr != "B":
+            continue
+        if carga:
+            r["km"] = max(round(r["km"] * fator_semana_prova_b(kk)), int(-(-(kk + 4) // 1)), round(semana_min or 0))
+        if kk >= 15 and i + 1 < len(rows):
+            n = rows[i + 1]
+            if n["fase"] in ("Base", "Específico") and "leve" not in n["obs"]:
+                n["km"] = max(round(n["km"] * (0.85 if kk <= 21.5 else 0.6)), round(semana_min or 0))
+                n["obs"] = f'{n["obs"]} · pós-prova B' if n["obs"] else "pós-prova B"
+
