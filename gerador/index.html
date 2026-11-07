@@ -164,6 +164,8 @@
               title="Nenhuma semana de Base ou Específico fica abaixo desse total, nem a semana leve; o ciclo começa nele ou acima (polimento, prova e pós-prova ficam de fora)"><u>km</u></label>
             <label class="corrida-only">Mínimo por treino <input type="number" id="min-km" step="0.5" min="0" placeholder="—"
               title="Nenhum treino de corrida fica abaixo desse km (a semana da prova e a seguinte ficam de fora)"><u>km</u></label>
+            <label class="corrida-only">Máximo por treino <input type="number" id="max-km" step="0.5" min="0" placeholder="—"
+              title="Nenhum treino de corrida passa desse km, fora o longo (que segue o Maior longo), as provas, o teste de limiar e o treino montado ou editado à mão. Se a semana não fecha o km pedido com esse teto, aparece o aviso"><u>km</u></label>
           </div>
           <div class="linha corrida-only" style="margin-top:8px">
             <label>Ciclo <select id="fases-ciclo"
@@ -266,6 +268,19 @@
         </div>
 
         <div id="plano-box" class="plano-box corrida-only oculto"></div>
+
+        <div class="grupo" id="grupo-orientacoes">
+          <h2>Orientações para o gerador</h2>
+          <p class="dica" style="margin:0 0 8px">Escreva os casos especiais deste atleta do seu jeito. O gerador lê o texto,
+            mostra o que entendeu e segue essas regras na prévia. Dia marcado à mão na grade não muda.</p>
+          <textarea id="orientacoes" rows="3"
+            placeholder="Ex.: dor no joelho, nada de tiro curto e no máximo 1 treino forte por semana. Viaja de 8 a 14/02, só rodagem de 30'. Longo sempre no domingo."></textarea>
+          <div class="linha" style="margin-top:8px;align-items:center">
+            <button type="button" class="secundario" id="btn-orientacoes">Ler orientações</button>
+            <small id="orientacoes-status" class="dica" style="margin:0"></small>
+          </div>
+          <div id="orientacoes-lidas" class="orientacoes-lidas oculto"></div>
+        </div>
 
         <details class="grupo avancado corrida-only">
           <summary>Ponto de partida <small>calibrado pelo histórico</small></summary>

@@ -310,7 +310,8 @@ $("#provas-bloco") && $("#provas-bloco").addEventListener("click", async (e) => 
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ athlete_id: DADOS.athlete_id, plano_id: pl.id,
           objetivo: objetivoMotor() || null, prova_km: kmObjetivo(), provas: provasParaCiclo(),
-          ...progressaoPedido(), min_km: parseFloat($("#min-km").value) || null }),
+          ...progressaoPedido(), min_km: parseFloat($("#min-km").value) || null,
+          max_km: parseFloat($("#max-km").value) || null }),
       });
       DADOS.periodizacao = r.periodizacao;
       pintarPlano();
@@ -349,6 +350,58 @@ function restaurarProvaA() {
   definirObjetivo(kmDaProva(a));
   $("#btn-ciclo-prova").disabled = false;
   DIA_ANTERIOR = a.date;
+}
+
+// ---- orientações do treinador em texto livre: o servidor lê com o Claude e devolve regras ----
+let ORIENT = null;             // {texto, regras, nao_entendi, hash} da última leitura
+const ORIENT_LIDO = () => ORIENT && (ORIENT.texto || "").trim() === $("#orientacoes").value.trim();
+function pintarOrientacoes() {
+  const box = $("#orientacoes-lidas"), st = $("#orientacoes-status");
+  const texto = $("#orientacoes").value.trim();
+  if (!texto) { box.classList.add("oculto"); box.innerHTML = ""; st.textContent = ""; return; }
+  if (!ORIENT_LIDO()) {
+    st.textContent = "Texto ainda não lido. Clique em Ler orientações ou gere a prévia, que lê sozinha.";
+    box.classList.add("oculto");
+    return;
+  }
+  const regras = ORIENT.regras || [], nao = ORIENT.nao_entendi || [];
+  st.textContent = regras.length ? `${regras.length} regra${regras.length > 1 ? "s" : ""} para a prévia.` : "Nenhuma regra que o gerador consiga aplicar.";
+  const esc = (t) => String(t || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  box.innerHTML = (regras.length ? `<span class="rotulo">O gerador entendeu</span><ul>${regras.map((r) =>
+      `<li>${esc(r.explicacao || r.acao)}${r.periodo ? ` <small>(${fmtBR(r.periodo.ini).slice(0, 5)} a ${fmtBR(r.periodo.fim).slice(0, 5)})</small>` : ""}</li>`).join("")}</ul>` : "") +
+    (nao.length ? `<span class="rotulo">Não dá para aplicar</span><ul class="nao">${nao.map((x) =>
+      `<li>${x.trecho ? `"${esc(x.trecho)}": ` : ""}${esc(x.motivo)}</li>`).join("")}</ul>` : "");
+  box.classList.toggle("oculto", !(regras.length || nao.length));
+}
+function gradeSemana1() {
+  const g = {};
+  document.querySelectorAll('#dias select[data-dia][data-semana="1"]').forEach((s) => { if (s.value) g[s.dataset.dia] = s.value; });
+  return { 1: g };
+}
+function orientacoesPedido() {
+  const texto = $("#orientacoes").value.trim();
+  if (!texto) return null;
+  return ORIENT_LIDO() ? { texto, regras: ORIENT.regras || [], hash: ORIENT.hash } : { texto };
+}
+$("#btn-orientacoes").onclick = async () => {
+  if (!DADOS) return;
+  const texto = $("#orientacoes").value.trim();
+  carregando(texto ? "lendo as orientações (leva uns 30 segundos)..." : "limpando as orientações...");
+  try {
+    ORIENT = await api("/api/orientacoes/interpretar", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ athlete_id: DADOS.athlete_id, texto, inicio: $("#inicio").value, fim: $("#fim").value,
+        modalidade: modalidade(), prova: objetivoMotor() || null, prova_data: $("#prova-data").value || null,
+        semanas_tipos: gradeSemana1() }),
+    });
+    pintarOrientacoes();
+  } catch (e) { alert("Não deu para ler as orientações: " + e.message); } finally { pronto(); }
+};
+$("#orientacoes").addEventListener("input", pintarOrientacoes);
+function restaurarOrientacoes() {
+  ORIENT = (DADOS && DADOS.orientacoes) || null;
+  $("#orientacoes").value = ORIENT ? ORIENT.texto || "" : "";
+  pintarOrientacoes();
 }
 
 async function anexarForcaBib(ed) {
@@ -471,7 +524,7 @@ function limparEstadoAtleta() {
   $("#sec-previa").classList.add("oculto");
   $("#publicar").disabled = true;
   $("#substituir").checked = true;
-  ["#prova-data", "#prova-nome", "#prova-km", "#min-km", "#semana-max", "#semana-min", "#longo-min"].forEach((k) => { $(k).value = ""; });
+  ["#prova-data", "#prova-nome", "#prova-km", "#min-km", "#max-km", "#semana-max", "#semana-min", "#longo-min"].forEach((k) => { $(k).value = ""; });
   $("#prova").value = "";
   mostrarKmObjetivo();
   $("#btn-ciclo-prova").disabled = true;
@@ -493,6 +546,7 @@ $("#carregar").onclick = async () => {
     if (trocou) limparEstadoAtleta();
     DADOS.athlete_id = id;
     restaurarProvaA();
+    restaurarOrientacoes();
     pintarProvasCal();
     NOTAS = {};
     FIXOS = {};
@@ -1141,6 +1195,7 @@ function progressaoDoPlano(p) {
   if (pr.recup_corte != null) $("#recup-corte").value = pr.recup_corte;
   if (pr.progressao != null) $("#progressao").value = pr.progressao;
   if (pr.min_km != null) setAuto("#min-km", pr.min_km);
+  if (pr.max_km != null) setAuto("#max-km", pr.max_km);
   if (pr.semana_min) setAuto("#semana-min", pr.semana_min);
   if (pr.longo_min) setAuto("#longo-min", pr.longo_min);
   if (["base", "especifico", "base_especifico", "completo"].includes(pr.modo)) $("#fases-ciclo").value = pr.modo;
@@ -1178,7 +1233,7 @@ async function refazerPlano() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ athlete_id: DADOS.athlete_id, plano_id: p.id,
         objetivo: objetivoMotor() || null, ...progressaoPedido(), ...picos,
-        min_km: parseFloat($("#min-km").value) || null }),
+        min_km: parseFloat($("#min-km").value) || null, max_km: parseFloat($("#max-km").value) || null }),
     });
     DADOS.periodizacao = r.periodizacao;
     // o treinador mexeu de novo enquanto este pedido ia e voltava: só o plano
@@ -1932,7 +1987,7 @@ function sugestaoCiclismo(w, dias) {
 // bloco de ciclismo: nada de prova de corrida, km, teste de limiar ou plano de corrida no motor
 function payloadCiclismo() {
   return { modalidade: "ciclismo", ciclismo: cicPedido(), so_forca: false, prova: null, prova_data: null,
-    prova_nome: null, prova_km: null, provas: [], taper_ctl: false, teste_limiar: "nenhum", min_km_treino: null,
+    prova_nome: null, prova_km: null, provas: [], taper_ctl: false, teste_limiar: "nenhum", min_km_treino: null, max_km_treino: null,
     semana_max_km: null, semana_min: null, longo_max_km: null, longo_min_km: null, seguir_periodizacao: false };
 }
 
@@ -1957,7 +2012,8 @@ $("#gerar").onclick = async () => {
     if (s2.value) (semanas_forca[s2.dataset.semana2] ??= {})[s2.dataset.dia2] = s2.value;
   });
 
-  carregando("montando o bloco...");
+  const orientacoes = orientacoesPedido();
+  carregando(orientacoes && !orientacoes.regras ? "lendo as orientações e montando o bloco..." : "montando o bloco...");
   try {
     PREVIA = await api("/api/previa", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -1966,6 +2022,7 @@ $("#gerar").onclick = async () => {
         inicio: $("#inicio").value, fim: $("#fim").value,
         semanas_tipos,
         semanas_forca,
+        orientacoes,
         forca_objetivo: forcaObjetivo(),
         tempo_max,
         notas: NOTAS,
@@ -1980,6 +2037,7 @@ $("#gerar").onclick = async () => {
         taper_ctl: $("#taper-ctl") ? $("#taper-ctl").checked : true,
         teste_limiar: $("#teste-limiar") ? $("#teste-limiar").value : "auto",
         min_km_treino: $("#min-km").value ? parseFloat($("#min-km").value) : null,
+        max_km_treino: $("#max-km").value ? parseFloat($("#max-km").value) : null,
         semana_max_km: $("#semana-max").value ? parseFloat($("#semana-max").value) : null,
         longo_max_km: $("#longo-max").value ? parseFloat($("#longo-max").value) : null,
         longo_min_km: $("#longo-min").value ? parseFloat($("#longo-min").value) : null,
@@ -1997,6 +2055,7 @@ $("#gerar").onclick = async () => {
         ...(soCiclismo ? payloadCiclismo() : {}),
       }),
     });
+    if (PREVIA.orientacoes) { ORIENT = PREVIA.orientacoes; pintarOrientacoes(); }
     pintarPrevia();
     $("#publicar").disabled = !(PREVIA.sessoes && PREVIA.sessoes.length);   // apontamentos não bloqueiam
     $("#sec-previa").classList.remove("oculto");
@@ -2011,7 +2070,7 @@ function payloadSoForca() {
   const fases = {};
   for (let w = 1; w <= nSemanasPeriodo(); w++) fases[w] = { forca: faseForcaDaSemana(w) };
   return { so_forca: true, fases, prova: null, prova_data: null, prova_nome: null, prova_km: null, provas: [],
-    taper_ctl: false, teste_limiar: "nenhum", min_km_treino: null, semana_max_km: null, semana_min_km: null,
+    taper_ctl: false, teste_limiar: "nenhum", min_km_treino: null, max_km_treino: null, semana_max_km: null, semana_min_km: null,
     longo_max_km: null, longo_min_km: null, semana_min: null, longo_min: null, sem_recuperacao: true, seguir_periodizacao: false, semanas_forca: {} };
 }
 
@@ -2028,9 +2087,13 @@ function pintarPrevia() {
   $("#resumo-semanas").classList.add("oculto");
   const av = $("#avisos-seq");
   if (av) {
-    const lista = PREVIA.avisos || [];
-    av.classList.toggle("oculto", !lista.length);
-    if (lista.length) av.innerHTML = `<details><summary>${lista.length} ajuste${lista.length > 1 ? "s" : ""} na sequência dos dias (regras de montagem)</summary><ul>${lista.map((x) => `<li>${x}</li>`).join("")}</ul></details>`;
+    // orientações do treinador ficam à vista; os ajustes de montagem, recolhidos
+    const ori = (PREVIA.avisos || []).filter((x) => x.startsWith("Orientação: "));
+    const lista = (PREVIA.avisos || []).filter((x) => !x.startsWith("Orientação: "));
+    av.classList.toggle("oculto", !lista.length && !ori.length);
+    av.innerHTML = (ori.length ? `<div class="orientacoes-aplicadas"><b>Orientações aplicadas</b><ul>${ori.map((x) =>
+        `<li>${x.slice(12)}</li>`).join("")}</ul></div>` : "") +
+      (lista.length ? `<details><summary>${lista.length} ajuste${lista.length > 1 ? "s" : ""} na sequência dos dias (regras de montagem)</summary><ul>${lista.map((x) => `<li>${x}</li>`).join("")}</ul></details>` : "");
   }
   const pm = $("#pmc-linha");
   if (pm) {
@@ -3262,7 +3325,8 @@ $("#btn-ciclo-periodo").onclick = async () => {
         objetivo, km_pico: km, prova_data: provaDia, fim,
         prova_km: completo && provaDia === pd ? kmObjetivo() : null, provas: provasParaCiclo(),
         longo_pico: parseFloat($("#longo-max").value) || null,
-        min_km: parseFloat($("#min-km").value) || null, ini_auto: true, ...progressaoPedido() }),
+        min_km: parseFloat($("#min-km").value) || null, max_km: parseFloat($("#max-km").value) || null,
+        ini_auto: true, ...progressaoPedido() }),
     }) : await api("/api/periodizacao/criar", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -3274,6 +3338,7 @@ $("#btn-ciclo-periodo").onclick = async () => {
         km_pico: km,
         longo_pico: parseFloat($("#longo-max").value) || null,
         min_km: parseFloat($("#min-km").value) || null,
+        max_km: parseFloat($("#max-km").value) || null,
         historico: historicoCompacto(),
         ...progressaoPedido(),
       }),
@@ -3301,7 +3366,8 @@ $("#btn-ciclo-periodo").onclick = async () => {
                                : `Ciclo sem prova criado: ${nome.toLowerCase()}`) + `, maior semana ${km} km` +
       ($("#longo-max").value ? `, longo até ${$("#longo-max").value} km` : "") +
       ($("#longo-min").value ? `, longo nunca abaixo de ${$("#longo-min").value} km` : "") +
-      ($("#min-km").value ? `, mínimo de ${$("#min-km").value} km por treino` : "") + "." +
+      ($("#min-km").value ? `, mínimo de ${$("#min-km").value} km por treino` : "") +
+      ($("#max-km").value ? `, máximo de ${$("#max-km").value} km por treino (fora o longo)` : "") + "." +
       (!completo && tinhaProva ? " A data de prova da tela foi limpa (o ciclo não tem prova)." : "") +
       (completo && pd && pd !== provaDia ? ` O Dia da caixa Prova estava fora do período; a prova ficou no Fim (${fmt(provaDia)}).` : "") +
       (r.aviso ? " " + r.aviso : ""));

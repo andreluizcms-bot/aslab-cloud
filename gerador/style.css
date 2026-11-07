@@ -576,3 +576,13 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .provas-bloco .pv-novo .pv-km { margin-left: 0; }
 .provas-bloco .pv-novo select { margin-left: 0; }
 .provas-bloco .pv-aviso { margin: 8px 0 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#orientacoes { width: 100%; resize: vertical; min-height: 64px; font: inherit; }
+.orientacoes-lidas { margin-top: 10px; border-top: 1px dashed var(--linha2); padding-top: 8px; font-size: 13px; }
+.orientacoes-lidas .rotulo { font: 500 12px var(--mono); color: var(--txt3); display: block; margin: 4px 0; }
+.orientacoes-lidas ul { margin: 0 0 6px; padding-left: 18px; }
+.orientacoes-lidas li { margin: 2px 0; }
+.orientacoes-lidas .nao li { color: var(--txt3); }
+.orientacoes-aplicadas { margin-bottom: 8px; font-size: 13px; }
+.orientacoes-aplicadas b { font: 500 12px var(--mono); color: var(--coral); display: block; margin-bottom: 2px; }
+.orientacoes-aplicadas ul { margin: 0; padding-left: 18px; }
+
