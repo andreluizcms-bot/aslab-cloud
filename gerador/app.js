@@ -1028,29 +1028,7 @@ $("#plano-box").addEventListener("click", async (e) => {
     t.closest("tr").remove();
     return renumeraPlano();
   }
-  if (t.id === "plano-salvar") {
-    const tab = document.querySelector(".plano-edit");
-    const semanas = [...tab.querySelectorAll("tr")].slice(1).map((tr) => ({
-      fase: tr.querySelector(".p-fase").value,
-      km: tr.querySelector(".p-km").value,
-      horas: tr.dataset.horas || null,
-      obs: tr.querySelector(".p-obs").value,
-    }));
-    carregando("salvando a periodização...");
-    try {
-      const r = await api("/api/periodizacao/salvar", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          athlete_id: DADOS.athlete_id, plano_id: +tab.dataset.id,
-          nome: $("#plano-nome").value, prova_data: $("#plano-prova").value,
-          semanas,
-        }),
-      });
-      DADOS.periodizacao = r.periodizacao;
-      pintarPlano();
-      $("#plano-status") && ($("#plano-status").textContent = "salvo ✓");
-    } catch (err) { alert("Erro ao salvar: " + err.message); } finally { pronto(); }
-  }
+  if (t.id === "plano-salvar") await salvarPlanoDaTela();
   if (t.id === "plano-criar") {
     carregando("criando o ciclo...");
     try {
@@ -1992,7 +1970,9 @@ function payloadCiclismo() {
 }
 
 // -- 3. previa -------------------------------------------------------------
-$("#gerar").onclick = async () => {
+let PREVIA_SEM_ROLAR = false;
+$("#gerar").onclick = () => gerarPrevia();
+async function gerarPrevia() {
   const th = thresholdEscolhido();
   const soForca = modalidade() === "forca";
   const soCiclismo = modalidade() === "ciclismo";
@@ -2059,7 +2039,7 @@ $("#gerar").onclick = async () => {
     pintarPrevia();
     $("#publicar").disabled = !(PREVIA.sessoes && PREVIA.sessoes.length);   // apontamentos não bloqueiam
     $("#sec-previa").classList.remove("oculto");
-    $("#sec-previa").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!PREVIA_SEM_ROLAR) $("#sec-previa").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (e) {
     alert("Erro ao gerar: " + e.message);
   } finally { pronto(); }
@@ -2704,6 +2684,68 @@ function montarEditorExercicios(ed, s, i) {
     } catch (err) { alert("Erro: " + err.message); pintar(); } finally { pronto(); }
   };
 }
+
+// salva a tabela do ciclo e leva o km de cada semana para as semanas e para a prévia
+async function salvarPlanoDaTela() {
+  clearTimeout(_salvarPlanoT);
+  const tab = document.querySelector(".plano-edit");
+  if (!tab || !DADOS) return;
+  const semanas = [...tab.querySelectorAll("tr")].slice(1).map((tr) => ({
+    fase: tr.querySelector(".p-fase").value,
+    km: tr.querySelector(".p-km").value,
+    horas: tr.dataset.horas || null,
+    obs: tr.querySelector(".p-obs").value,
+  }));
+  carregando("salvando a periodização...");
+  try {
+    const r = await api("/api/periodizacao/salvar", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        athlete_id: DADOS.athlete_id, plano_id: +tab.dataset.id,
+        nome: $("#plano-nome").value, prova_data: $("#plano-prova").value,
+        semanas,
+      }),
+    });
+    DADOS.periodizacao = r.periodizacao;
+    pintarPlano();
+    $("#plano-status") && ($("#plano-status").textContent = "salvo ✓");
+  } catch (err) { alert("Erro ao salvar: " + err.message); return; } finally { pronto(); }
+  await levarPlanoParaSemanas();
+}
+// o km salvo no ciclo vale nas semanas: a grade segue o plano e a prévia é refeita.
+// Prévia com treino editado à mão não é refeita por cima: fica o aviso
+async function levarPlanoParaSemanas() {
+  if ($("#seguir-plano")) $("#seguir-plano").checked = true;
+  montarDias(true); reaplicarSugestaoGrade(); sugerirBloco();
+  document.dispatchEvent(new CustomEvent("fases-mudou"));
+  const st = $("#plano-status");
+  if (!PREVIA || !PREVIA.sessoes) {
+    if (st) st.textContent = "salvo ✓ · o km de cada semana vale na prévia";
+    return;
+  }
+  if (PREVIA.sessoes.some((s) => s.editado)) {
+    if (st) st.textContent = "salvo ✓ · a prévia tem treino editado à mão: gere de novo para levar o km";
+    return;
+  }
+  PREVIA_SEM_ROLAR = true;
+  try { await gerarPrevia(); } finally { PREVIA_SEM_ROLAR = false; }
+  if (st) st.textContent = "salvo ✓ · prévia refeita com o km de cada semana";
+}
+// mudou o km (ou a fase) de uma semana na tabela do ciclo: salva sozinho quando o
+// cursor sai da tabela (redesenhar no meio da digitação apagaria a semana seguinte)
+let _salvarPlanoT = null;
+function agendarSalvarPlano() {
+  clearTimeout(_salvarPlanoT);
+  _salvarPlanoT = setTimeout(() => {
+    const foco = document.activeElement;
+    if (foco && foco.closest && foco.closest(".plano-edit")) return agendarSalvarPlano();
+    salvarPlanoDaTela();
+  }, 900);
+}
+document.addEventListener("change", (e) => {
+  if (!e.target.closest(".plano-edit") || !e.target.matches(".p-km, .p-fase")) return;
+  agendarSalvarPlano();
+});
 
 // REGRA OBRIGATÓRIA: depois de qualquer edição manual, o longo continua sendo o maior
 // treino de corrida da semana (o servidor ajusta os outros, sem passar do teto)
