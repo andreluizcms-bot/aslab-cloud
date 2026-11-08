@@ -1366,7 +1366,7 @@ function faseForcaAuto(w) {
 }
 const faseForcaDaSemana = (w) => (FASES[w] && FASES[w].forca) || faseForcaAuto(w);
 // espelho de forca.RECEITA_FASE, só para mostrar no quadro
-const RECEITA_FASE = { "Adaptação": "3 séries de 10", "Base": "3 séries de 8", "Força máxima": "3 séries de 5",
+const RECEITA_FASE = { "Adaptação": "3 séries de 10", "Base": "3 séries de 8", "Força máxima": "3 séries de 5, subida rápida",
   "Acumulação": "3 séries de 6", "Pré-competitivo": "3 séries de 5", "Competitivo": "3 séries de 6", "Descarga": "2 séries de 8",
   "Hipertrofia": "4 séries de 10 a 12", "Potência": "3 séries de 5, velocidade máxima", "Resistência": "3 séries de 15" };
 function pintarPlanoForca() {
