@@ -149,6 +149,9 @@ h1, h2, h3 { margin: 0; font-weight: 700; }
 .ciclo-sem[data-fase="Pré-competitivo"] .barra { background: var(--verde); }
 .ciclo-sem[data-fase="Competitivo"] .barra { background: var(--verm); }
 .ciclo-sem[data-fase="Descarga"] .barra { background: var(--f-leve); }
+.ciclo-sem[data-fase="Hipertrofia"] .barra { background: var(--ambar2); }
+.ciclo-sem[data-fase="Potência"] .barra { background: var(--verde); }
+.ciclo-sem[data-fase="Resistência"] .barra { background: var(--teal2); }
 .ciclo-sem[data-fase="Construção"] .barra { background: var(--ambar2); }
 .ciclo-sem[data-fase="Recuperação"] .barra { background: var(--f-leve); }
 .ciclo-sem.leve .barra { background: var(--f-leve); }

@@ -141,7 +141,7 @@
   // ---- linha do ciclo -------------------------------------------------------
   // só força: sem km, a barra indica a carga de cada fase
   const ALTURA_FASE = { "Adaptação": 40, Base: 55, "Força máxima": 100, "Acumulação": 85,
-    "Pré-competitivo": 70, "Competitivo": 50, Descarga: 25 };
+    "Pré-competitivo": 70, "Competitivo": 50, Descarga: 25, Hipertrofia: 75, "Potência": 65, "Resistência": 45 };
   function pintarCiclo() {
     const faixa = $("#ciclo-faixa");
     if (!dados() || typeof nSemanasPeriodo !== "function" || !$("#inicio").value) { faixa.innerHTML = ""; return; }
@@ -177,6 +177,7 @@
     const cor = { Base: "var(--f-base)", "Específico": "var(--f-esp)", Polimento: "var(--f-pol)", Prova: "var(--f-prova)",
       "Adaptação": "var(--teal2)", "Força máxima": "var(--coral)", "Acumulação": "var(--ambar)",
       "Pré-competitivo": "var(--verde)", "Competitivo": "var(--verm)", "Descarga": "var(--f-leve)",
+      "Hipertrofia": "var(--ambar2)", "Potência": "var(--verde)", "Resistência": "var(--teal2)",
       "Construção": "var(--ambar2)", "Recuperação": "var(--f-leve)" };
     $("#ciclo-legenda").innerHTML = fases.map((f) => `<span><i style="background:${cor[f] || "var(--f-leve)"}"></i>${f}</span>`).join("")
       + (semanas.some((s) => s.leve) ? `<span><i style="background:var(--f-leve)"></i>leve</span>` : "");
@@ -199,7 +200,8 @@
     $("#res-nome").textContent = d ? (d.nome || $("#atleta option:checked")?.textContent || "—") : "—";
     $("#res-sub").textContent = !d ? "nenhum atleta" : soForca() ? "periodização de força"
       : d.periodizacao ? `ciclo: ${d.periodizacao.nome}` : "sem periodização no Lab";
-    $("#res-objetivo").textContent = d ? (forcaObjetivo() === "hipertrofia" ? "Hipertrofia" : "Performance") : "—";
+    $("#res-objetivo").textContent = d ? ({ hipertrofia: "Hipertrofia", forca_maxima: "Força máxima", potencia: "Potência",
+      resistencia: "Resistência" }[forcaObjetivo()] || "Performance") : "—";
     if (ciclismo()) {
       $("#res-sub").textContent = `ciclo de ciclismo · ${$("#cic-disciplina").value === "mtb" ? "mountain bike" : "estrada"}`;
       const mt = $("#cic-metrica").value;

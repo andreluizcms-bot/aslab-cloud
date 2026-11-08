@@ -702,7 +702,10 @@ function pintarZonas() {
 
 // ---- periodizacao: quadro editavel + criacao -------------------------------
 const FASES_PLANO = ["Base", "Específico", "Polimento", "Prova"];
-const FASES_FORCA = ["Adaptação", "Base", "Força máxima", "Acumulação", "Pré-competitivo", "Competitivo", "Descarga"];
+const FASES_FORCA = ["Adaptação", "Base", "Força máxima", "Acumulação", "Pré-competitivo", "Competitivo", "Descarga",
+  "Hipertrofia", "Potência", "Resistência"];
+// o objetivo é o padrão das semanas em automática (espelho de forca.FASE_DO_OBJETIVO)
+const FASE_DO_OBJETIVO = { hipertrofia: "Hipertrofia", forca_maxima: "Força máxima", potencia: "Potência", resistencia: "Resistência" };
 // fase escolhida à mão por semana: { [semana]: { corrida: "Base"|..., forca: "Adaptação"|... } }
 // (vazio = automático, pela periodização/posição no bloco)
 let FASES = {};
@@ -1348,6 +1351,7 @@ function faseAutomatica(w) {
 function faseForcaAuto(w) {
   const n = nSemanasPeriodo(), cada = +$("#forca-descarga").value || 0;
   if (cada > 0 && w % cada === 0 && w < n) return "Descarga";
+  if (FASE_DO_OBJETIVO[forcaObjetivo()]) return FASE_DO_OBJETIVO[forcaObjetivo()];
   if (n <= 1) return "Base";
   if (n <= 3) return ["Base", "Força máxima", "Competitivo"][Math.min(w, n) - 1];
   if (n === 5) return ["Adaptação", "Força máxima", "Acumulação", "Pré-competitivo", "Competitivo"][Math.min(w, 5) - 1];
@@ -1362,19 +1366,19 @@ function faseForcaAuto(w) {
 }
 const faseForcaDaSemana = (w) => (FASES[w] && FASES[w].forca) || faseForcaAuto(w);
 // espelho de forca.RECEITA_FASE, só para mostrar no quadro
-const RECEITA_FASE = { "Adaptação": "3 séries de 10", "Base": "3 séries de 8", "Força máxima": "4 séries de 5",
-  "Acumulação": "3 séries de 6", "Pré-competitivo": "3 séries de 5", "Competitivo": "3 séries de 6", "Descarga": "2 séries de 8" };
+const RECEITA_FASE = { "Adaptação": "3 séries de 10", "Base": "3 séries de 8", "Força máxima": "3 séries de 5",
+  "Acumulação": "3 séries de 6", "Pré-competitivo": "3 séries de 5", "Competitivo": "3 séries de 6", "Descarga": "2 séries de 8",
+  "Hipertrofia": "4 séries de 10 a 12", "Potência": "3 séries de 5, velocidade máxima", "Resistência": "3 séries de 15" };
 function pintarPlanoForca() {
   const box = $("#plano-forca");
   if (!box || modalidade() !== "forca" || !$("#inicio").value) return;
   const n = nSemanasPeriodo();
   const ini = segundaDe(new Date($("#inicio").value + "T12:00"));
-  const hiper = forcaObjetivo() === "hipertrofia";
   let linhas = "";
   for (let w = 1; w <= n; w++) {
     const seg = new Date(ini); seg.setDate(seg.getDate() + 7 * (w - 1));
     const fase = faseForcaDaSemana(w), manual = FASES[w] && FASES[w].forca;
-    const receita = hiper && fase !== "Descarga" ? "4 séries de 10 a 12" : RECEITA_FASE[fase];
+    const receita = RECEITA_FASE[fase];
     linhas += `<tr><td class="p-idx">${w}</td><td class="p-data">${seg.toISOString().slice(0, 10).split("-").reverse().slice(0, 2).join("/")}</td>
       <td><select class="plano-forca-sel${manual ? " manual" : ""}" data-semana="${w}"><option value="">automática · ${faseForcaAuto(w)}</option>` +
       FASES_FORCA.map((f) => `<option value="${f}" ${manual === f ? "selected" : ""}>${f}</option>`).join("") +
@@ -2279,6 +2283,24 @@ FORCA_TIPOS.forEach((t) => { CAMPOS[t] = CAMPOS.forca; });
 function modalidade() { return (document.querySelector('input[name="modalidade"]:checked') || {}).value || "mista"; }
 // objetivo do treino de força do bloco: performance esportiva | hipertrofia
 function forcaObjetivo() { return (document.querySelector('input[name="forca-objetivo"]:checked') || {}).value || "performance"; }
+// trocou a fase de uma semana ou o objetivo com a prévia aberta: refaz a prévia com as
+// séries novas. Prévia com treino editado à mão não é refeita por cima: fica o aviso
+let _previaForcaT = null;
+document.addEventListener("change", (e) => {
+  if (!e.target.matches('.plano-forca-sel, .forca-sel, input[name="forca-objetivo"]')) return;
+  if (!PREVIA || !PREVIA.sessoes || !PREVIA.sessoes.some((s) => s.forca)) return;
+  clearTimeout(_previaForcaT);
+  _previaForcaT = setTimeout(async () => {
+    const st = $("#forca-status");
+    if (PREVIA.sessoes.some((s) => s.editado)) {
+      if (st) { st.textContent = "A prévia tem treino editado à mão: gere de novo para levar as séries novas."; st.classList.remove("oculto"); }
+      return;
+    }
+    if (st) st.classList.add("oculto");
+    PREVIA_SEM_ROLAR = true;
+    try { await gerarPrevia(); } finally { PREVIA_SEM_ROLAR = false; }
+  }, 500);
+});
 document.addEventListener("change", (e) => {
   if (e.target.name === "modalidade") {
     const g = document.getElementById("grupo-forca-obj");

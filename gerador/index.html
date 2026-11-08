@@ -144,9 +144,12 @@
           <div class="modal-sel" role="radiogroup" aria-label="Objetivo do treino de força" id="forca-objetivo">
             <label><input type="radio" name="forca-objetivo" value="performance" checked><span>Performance esportiva</span></label>
             <label><input type="radio" name="forca-objetivo" value="hipertrofia"><span>Hipertrofia</span></label>
+            <label><input type="radio" name="forca-objetivo" value="forca_maxima"><span>Força máxima</span></label>
+            <label><input type="radio" name="forca-objetivo" value="potencia"><span>Potência</span></label>
+            <label><input type="radio" name="forca-objetivo" value="resistencia"><span>Resistência</span></label>
           </div>
-          <p class="dica corrida-only" style="margin:6px 0 0">Performance mantém as séries pesadas e curtas do corredor. Hipertrofia passa os exercícios principais para 4 séries de 10 a 12 repetições. Core, descarga e a sessão da semana de prova não mudam.</p>
-          <p class="dica forca-only" style="margin:6px 0 0">Performance segue as séries e repetições da fase de cada semana. Hipertrofia fica em 4 séries de 10 a 12 repetições nos exercícios principais.</p>
+          <p class="dica corrida-only" style="margin:6px 0 0">Performance mantém as séries pesadas e curtas do corredor. Hipertrofia: 4 séries de 10 a 12. Força máxima: 3 séries de 5. Potência: 3 séries de 5 com velocidade máxima. Resistência: 3 séries de 15. Core, descarga e a sessão da semana de prova não mudam. A fase marcada numa semana vale mais que o objetivo.</p>
+          <p class="dica forca-only" style="margin:6px 0 0">Performance segue a fase de cada semana. Hipertrofia: 4 séries de 10 a 12. Força máxima: 3 séries de 5. Potência: 3 séries de 5 com velocidade máxima. Resistência: 3 séries de 15. O objetivo vale nas semanas em automática; a fase que você marcar numa semana manda nas séries e repetições dela.</p>
         </div>
 
         <div class="grupo">
@@ -223,6 +226,7 @@
           </div>
           <p class="dica" style="margin:6px 0 10px">Escolha a fase de cada semana. O foco marcado nas Semanas não muda: a fase define as séries e repetições dos exercícios principais.</p>
           <div id="plano-forca"></div>
+          <p class="dica oculto" id="forca-status" style="margin:6px 0 0"></p>
         </div>
 
         <div class="grupo corrida-only">
